@@ -1,0 +1,87 @@
+name: HermesCapture
+options:
+  bundleIdPrefix: com.67enterprise.oriel
+  deploymentTarget:
+    macOS: '15.0'
+    iOS: '18.0'
+  createIntermediateGroups: true
+settings:
+  base:
+    SWIFT_VERSION: '6.0'
+    CURRENT_PROJECT_VERSION: 202607140604
+    MARKETING_VERSION: 1.0
+packages:
+  HermesCaptureLocal:
+    path: .
+  MLXSwiftLM:
+    url: https://github.com/ml-explore/mlx-swift-lm
+    exactVersion: 3.32.3
+  SwiftHuggingFace:
+    url: https://github.com/huggingface/swift-huggingface
+    from: 0.9.0
+  SwiftTransformers:
+    url: https://github.com/huggingface/swift-transformers
+    from: 1.3.0
+targets:
+  HermesCaptureMac:
+    type: application
+    platform: macOS
+    sources:
+    - Apps/HermesCaptureMac
+    dependencies:
+    - package: HermesCaptureLocal
+      product: HermesCaptureCore
+    - package: HermesCaptureLocal
+      product: HermesCaptureProtocol
+    - package: MLXSwiftLM
+      product: MLXLLM
+    - package: MLXSwiftLM
+      product: MLXVLM
+    - package: MLXSwiftLM
+      product: MLXLMCommon
+    - package: MLXSwiftLM
+      product: MLXHuggingFace
+    - package: SwiftHuggingFace
+      product: HuggingFace
+    - package: SwiftTransformers
+      product: Tokenizers
+    info:
+      path: Apps/HermesCaptureMac/Info.plist
+      properties:
+        CFBundleDisplayName: Oriel
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        ITSAppUsesNonExemptEncryption: false
+        LSUIElement: true
+        NSHumanReadableCopyright: "Copyright \xA9 2026 67 Enterprise. All rights reserved."
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.67enterprise.oriel.mac
+        CODE_SIGN_ENTITLEMENTS: Apps/HermesCaptureMac/HermesCaptureMac.entitlements
+        OTHER_LDFLAGS: $(inherited) -weak_framework FoundationModels
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        GENERATE_INFOPLIST_FILE: false
+        ENABLE_HARDENED_RUNTIME: true
+        ENABLE_APP_SANDBOX: false
+  HermesCaptureMacTests:
+    type: bundle.unit-test
+    platform: macOS
+    sources:
+    - Tests/HermesCaptureMacTests
+    dependencies:
+    - target: HermesCaptureMac
+    - package: HermesCaptureLocal
+      product: HermesCaptureCore
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: true
+schemes:
+  HermesCaptureMac:
+    build:
+      targets:
+        HermesCaptureMac: all
+    test:
+      commandLineArguments:
+        --headless: true
+      targets:
+      - HermesCaptureMacTests

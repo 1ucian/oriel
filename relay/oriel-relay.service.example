@@ -1,0 +1,32 @@
+[Unit]
+Description=Oriel opaque rendezvous relay
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=oriel-relay
+Group=oriel-relay
+WorkingDirectory=/opt/oriel
+ExecStart=/opt/oriel/venv/bin/python -m relay.oriel_relay --transport websocket --host 127.0.0.1 --port 8765 --allow-loopback-http-origin --max-connections 2048 --max-pending 1024 --max-replays 4096 --registration-timeout 10
+Restart=on-failure
+RestartSec=2
+LimitNOFILE=4096
+MemoryMax=1G
+NoNewPrivileges=true
+PrivateDevices=true
+PrivateTmp=true
+ProtectControlGroups=true
+ProtectHome=true
+ProtectKernelLogs=true
+ProtectKernelModules=true
+ProtectKernelTunables=true
+ProtectSystem=strict
+RestrictAddressFamilies=AF_INET AF_INET6
+RestrictNamespaces=true
+RestrictRealtime=true
+SystemCallArchitectures=native
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target
