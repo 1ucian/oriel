@@ -161,7 +161,8 @@ struct OrielApplicationDelegateTests {
         defer { defaults.removePersistentDomain(forName: suite) }
         #expect(!OrielApplicationDelegate.captureBridgeEnabled(in: defaults), "Off when never set")
         defaults.set(true, forKey: OrielApplicationDelegate.captureBridgeDefaultsKey)
-        #expect(OrielApplicationDelegate.captureBridgeEnabled(in: defaults))
+        #expect(OrielApplicationDelegate.captureBridgeEnabled(in: defaults) == OrielApplicationDelegate.localBridgesCompiledIn,
+                "On only in a build that includes the local bridges")
     }
 
     @Test func interactiveLaunchPresentsPairingWindow() {

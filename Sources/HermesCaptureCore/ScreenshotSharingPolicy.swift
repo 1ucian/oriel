@@ -12,11 +12,12 @@ public enum ScreenshotSharingPolicy {
     public static func locality(ofHost rawHost: String) -> ModelLocality {
         let host = rawHost.lowercased().trimmingCharacters(in: .whitespaces)
             .trimmingCharacters(in: CharacterSet(charactersIn: "[]"))
-        if host.isEmpty || host == "localhost" || host == "::1" || host.hasPrefix("127.")
-            || host.hasSuffix(".localhost") || host == "0.0.0.0" {
+        if host.isEmpty || host == "localhost" || host.hasSuffix(".localhost") {
             return .onThisMac
         }
+        // Address ranges apply to address literals only; "127.example.com" is an internet name.
         if let octets = ipv4Octets(host) {
+            if octets[0] == 127 || octets == [0, 0, 0, 0] { return .onThisMac }
             if octets[0] == 10 { return .localNetwork }
             if octets[0] == 192, octets[1] == 168 { return .localNetwork }
             if octets[0] == 172, (16...31).contains(octets[1]) { return .localNetwork }
@@ -24,8 +25,15 @@ public enum ScreenshotSharingPolicy {
             if octets[0] == 100, (64...127).contains(octets[1]) { return .localNetwork } // Tailscale CGNAT range
             return .internet
         }
-        if host.hasPrefix("fe80:") || host.hasPrefix("fc") || host.hasPrefix("fd") { return .localNetwork }
-        if host.contains(":") { return .internet }
+        if host.contains(":") {
+            if host == "::1" { return .onThisMac }
+            if host.hasPrefix("fe80:") || host.hasPrefix("fc") || host.hasPrefix("fd") { return .localNetwork }
+            return .internet
+        }
+        // One number, or hex, is an IPv4 address to the resolver: "134744072" is 8.8.8.8.
+        if !host.contains("."), host.hasPrefix("0x") || host.allSatisfy({ $0.isASCII && $0.isNumber }) {
+            return .internet
+        }
         if host.hasSuffix(".local") || host.hasSuffix(".lan") || host.hasSuffix(".home.arpa")
             || host.hasSuffix(".internal") || host.hasSuffix(".ts.net") || !host.contains(".") {
             return .localNetwork

@@ -64,6 +64,9 @@ targets:
         GENERATE_INFOPLIST_FILE: false
         ENABLE_HARDENED_RUNTIME: true
         ENABLE_APP_SANDBOX: false
+      configs:
+        Debug:
+          SWIFT_ACTIVE_COMPILATION_CONDITIONS: $(inherited) ORIEL_LOCAL_BRIDGES
   HermesCaptureMacTests:
     type: bundle.unit-test
     platform: macOS

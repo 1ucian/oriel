@@ -383,6 +383,7 @@ struct LocalAssistantBridgeTests {
         defer { defaults.removePersistentDomain(forName: suite) }
         #expect(!OrielApplicationDelegate.assistantBridgeEnabled(in: defaults), "Off when never set")
         defaults.set(true, forKey: OrielApplicationDelegate.assistantBridgeDefaultsKey)
-        #expect(OrielApplicationDelegate.assistantBridgeEnabled(in: defaults))
+        #expect(OrielApplicationDelegate.assistantBridgeEnabled(in: defaults) == OrielApplicationDelegate.localBridgesCompiledIn,
+                "On only in a build that includes the local bridges")
     }
 }

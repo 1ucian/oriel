@@ -47,8 +47,18 @@ final class OrielApplicationDelegate: NSObject, NSApplicationDelegate {
     private let startsCaptureBridge: Bool
     static let captureBridgeDefaultsKey = "localCaptureBridge.enabled"
 
+    /// The bridges exist only in builds compiled with ORIEL_LOCAL_BRIDGES (Debug, or an owner's
+    /// own Release build). Any process of the user's can write the preferences below, so in the
+    /// notarized download they turn nothing on; the Developer ID release script refuses a build
+    /// that carries the bridges.
+    #if ORIEL_LOCAL_BRIDGES
+    static let localBridgesCompiledIn = true
+    #else
+    static let localBridgesCompiledIn = false
+    #endif
+
     static func captureBridgeEnabled(in defaults: UserDefaults) -> Bool {
-        defaults.bool(forKey: captureBridgeDefaultsKey)
+        localBridgesCompiledIn && defaults.bool(forKey: captureBridgeDefaultsKey)
     }
     /// The local goal bridge lets any process of the user's hand the assistant a goal through
     /// files beside the capture bridge's (see docs/COMPATIBILITY.md). It runs only when the
@@ -61,7 +71,7 @@ final class OrielApplicationDelegate: NSObject, NSApplicationDelegate {
     static let assistantBridgeDefaultsKey = "localAssistantBridge.enabled"
 
     static func assistantBridgeEnabled(in defaults: UserDefaults) -> Bool {
-        defaults.bool(forKey: assistantBridgeDefaultsKey)
+        localBridgesCompiledIn && defaults.bool(forKey: assistantBridgeDefaultsKey)
     }
     private lazy var pairingWindowRegistry = PairingWindowRegistry { [unowned self] in
         OrielPairingWindowController(
@@ -148,6 +158,11 @@ final class OrielApplicationDelegate: NSObject, NSApplicationDelegate {
             + " on \(ProcessInfo.processInfo.operatingSystemVersionString)"
             + "; Screen Recording \(permissions.screenRecordingGranted ? "granted" : "not granted")"
             + ", Accessibility \(permissions.accessibilityGranted ? "granted" : "not granted")")
+        #if ORIEL_LOCAL_BRIDGES
+        // The release script looks for this sentence to keep the bridges out of the download.
+        ActivityLog.shared.write(.app, "This build includes the local bridges: frames \(startsCaptureBridge ? "on" : "off")"
+            + ", goals and input \(startsAssistantBridge ? "on" : "off")")
+        #endif
         pairingBridge.startAvailability()
         if presentsPairingAtLaunch {
             presentPairing()

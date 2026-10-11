@@ -2,6 +2,8 @@
 
 Oriel's native Mac app replaces the Python `hermescap.py` stream helper while preserving the existing LCU filesystem contract. The native bridge starts once with the app, owns the cache through an atomic PID claim, and holds one ScreenCaptureKit stream under Oriel's stable bundle identity.
 
+The bridges in this document are compiled only into builds made with the `ORIEL_LOCAL_BRIDGES` Swift compilation condition: Debug builds, or a Release build made with `SWIFT_ACTIVE_COMPILATION_CONDITIONS=ORIEL_LOCAL_BRIDGES`. The notarized download leaves them out, so the preferences below do nothing there, and the Developer ID release script refuses a build that has them: any process running as the user can write a preference.
+
 The bridge is off unless the owner turns it on: any process running as the user can read the screen through these files, under Oriel's Screen Recording permission. Turn it on only for a local tool you trust, then restart Oriel:
 
 ```text

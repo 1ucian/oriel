@@ -237,10 +237,13 @@ final class LocalCaptureBridge {
     }
 
     private func acquireCacheOwnership() throws {
+        // Owner only: the cache sits in the home folder, which other local accounts can list.
         try FileManager.default.createDirectory(
             at: cacheDirectory,
-            withIntermediateDirectories: true
+            withIntermediateDirectories: true,
+            attributes: [.posixPermissions: 0o700]
         )
+        try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: cacheDirectory.path)
         if FileManager.default.fileExists(atPath: pidURL.path) {
             guard let text = try? String(contentsOf: pidURL, encoding: .utf8),
                   let existingPID = Int32(text.trimmingCharacters(in: .whitespacesAndNewlines)) else {

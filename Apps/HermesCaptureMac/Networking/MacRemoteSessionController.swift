@@ -210,14 +210,17 @@ actor MacRemoteSessionController {
                     frame: frame, displayID: displayID,
                     includeScreenshot: includeScreenshot, includeShapes: includeShapes
                 )
+                #if DEBUG
+                // Development only: the whole screen description each step, next to the log. A
+                // release build never writes screen text to disk, whatever its environment says.
                 if ProcessInfo.processInfo.environment["ORIEL_DEBUG_OBSERVATIONS"] == "1" {
-                    // Development only: the whole screen description each step, next to the log.
                     let folder = ActivityLog.shared.directory.appendingPathComponent("observations", isDirectory: true)
                     try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
                     let name = "observation-\(DispatchTime.now().uptimeNanoseconds).txt"
                     try? AgentObservationRenderer.render(result.observation, maximumBytes: 2_000_000)
                         .write(to: folder.appendingPathComponent(name), atomically: true, encoding: .utf8)
                 }
+                #endif
                 return result
             },
             execute: { [weak self] event in
