@@ -45,6 +45,10 @@ struct AssistantRunConfiguration: Sendable {
     /// The planner reviews the executor's work every this many steps (and at once when an
     /// action changed nothing), while the executor keeps going; 0 turns reviews off.
     var reviewEverySteps: Int = 3
+    /// A run that may observe and answer but send no input (the local goal bridge's read-only
+    /// goals): the planner is told to answer from the screen, and the caller's gate blocks any
+    /// action that would move the Mac.
+    var readOnly: Bool = false
 
     func executorMayShareScreenshots(instructionAllows: Bool) -> Bool {
         ScreenshotSharingPolicy.mayShareScreenshots(
@@ -59,7 +63,7 @@ struct AssistantRunConfiguration: Sendable {
 /// sub-tasks and pre-scripts the certain ones as direct actions; the executor (small, fast)
 /// works each sub-task against the screen without waiting on the planner, and reports back
 /// only at sub-task boundaries or when stuck. Policy runs before every action, the phone can
-/// pause, stop, approve, deny and answer, and models are released when the run ends.
+/// pause, stop, approve, deny and answer; models stay loaded until the session ends.
 actor AssistantRuntime {
     struct Dependencies: Sendable {
         let observe: @Sendable (_ includeScreenshot: Bool, _ includeShapes: Bool) async throws -> ScreenObservationResult
@@ -75,6 +79,10 @@ actor AssistantRuntime {
         /// Whether input would land in Oriel's own windows: the window under a point, or with
         /// no point (keyboard input) the window that has the keyboard.
         var landsOnOriel: @Sendable (NormalizedPoint?) async -> Bool = { _ in false }
+        /// Set for a run nobody watches (the local goal bridge): it has the last word on each
+        /// action after the policy, right before the action, and anything but allow ends the
+        /// run with nothing sent. A question ends it too: no one is there to approve or answer.
+        var unattendedGate: (@Sendable (AgentAction, AgentObservation, AgentApprovalDecision) async -> AgentApprovalDecision)? = nil
     }
 
     struct StepRecord: Sendable {
@@ -150,8 +158,6 @@ actor AssistantRuntime {
         pauseRequested = false
         pendingApproval = nil
         pendingAnswer = nil
-        plannerModelsUsed = []
-        executorModelsUsed = []
         totalSteps = 0
         runEnded = false
         openedApplications = []
@@ -186,7 +192,20 @@ actor AssistantRuntime {
         task?.cancel()
     }
 
-    /// Lets go of the models the run warmed up (Ollama, the built-in engine).
+    /// Loads the models before the first instruction (the phone just connected), so the first
+    /// step does not wait for them. They stay loaded until the session ends.
+    func warmModels() async {
+        plannerModelsUsed.insert(configuration.planner.model)
+        executorModelsUsed.insert(configuration.executor.model)
+        await configuration.planner.provider.warm(models: [configuration.planner.model])
+        await configuration.executor.provider.warm(models: [configuration.executor.model])
+        if let eyes = configuration.executor.visionProvider, let vision = configuration.executor.visionModel {
+            executorModelsUsed.insert(vision)
+            await eyes.warm(models: [vision])
+        }
+    }
+
+    /// Lets go of the models the session used (Ollama, the built-in engine), when it ends.
     func releaseModels() async {
         let planner = Array(plannerModelsUsed)
         let executor = Array(executorModelsUsed)
@@ -210,7 +229,6 @@ actor AssistantRuntime {
         emit(instruction, step: 0, kind: .started,
              summary: "Working on: \(instruction.text)"
                 + (screenshotsAllowed ? "" : " (models see a text description of the screen, never pixels)"))
-        defer { Task { await self.releaseModels() } }
 
         // "Go to Slack, open Dana's DM": the app the owner named comes to the front before
         // anything is planned, whatever happened to be in front.
@@ -255,7 +273,7 @@ actor AssistantRuntime {
             ]
             emitPlan(instruction, queue, note: nil)
         } else {
-        switch await plan(instruction, message: AssistantPlanner.initialMessage(instruction: instruction, observation: observed.observation, history: sessionHistoryLines),
+        switch await plan(instruction, message: AssistantPlanner.initialMessage(instruction: instruction, observation: observed.observation, history: sessionHistoryLines, readOnly: configuration.readOnly),
                           observation: observed.observation) {
         case let .plan(subtasks, note):
             queue = subtasks
@@ -265,7 +283,7 @@ actor AssistantRuntime {
             return
         case let .ask(question):
             guard let answer = await askOwner(instruction, question: question, stepID: "\(instruction.id)#plan") else { return }
-            switch await plan(instruction, message: AssistantPlanner.initialMessage(instruction: instruction, observation: observed.observation, history: sessionHistoryLines)
+            switch await plan(instruction, message: AssistantPlanner.initialMessage(instruction: instruction, observation: observed.observation, history: sessionHistoryLines, readOnly: configuration.readOnly)
                               + "\n\nThe owner was asked: \(question)\nThe owner answered: \(answer)", observation: observed.observation) {
             case let .plan(subtasks, note):
                 queue = subtasks
@@ -517,6 +535,7 @@ actor AssistantRuntime {
             do {
                 let reply = try await complete(configuration.planner.provider, request)
                 if let answer = AssistantPlanner.answerText(in: reply.text) { return answer }
+                dependencies.log("Answer reply not understood: \(reply.text.prefix(160))")
                 messages += [AssistantModelMessage(role: .assistant, text: reply.text),
                              AssistantModelMessage(role: .user, text: "Reply with only {\"done\":\"<the answer>\"}, quoting the screen.")]
             } catch is CancellationError {
@@ -538,6 +557,12 @@ actor AssistantRuntime {
     }
 
     private func askOwner(_ instruction: AgentInstruction, question: String, stepID: String) async -> String? {
+        if dependencies.unattendedGate != nil {
+            emit(instruction, step: totalSteps, kind: .asked, summary: question, action: .ask(question: question), stepID: stepID)
+            finish(instruction, kind: .failed, summary: "Asked \"\(question)\", and no one is there to answer.")
+            stopRequested = true
+            return nil
+        }
         phase = .waitingAnswer(stepID: stepID)
         pendingAnswer = (stepID, nil)
         emit(instruction, step: totalSteps, kind: .asked, summary: question, action: .ask(question: question), stepID: stepID)
@@ -717,6 +742,8 @@ actor AssistantRuntime {
         var history: [StepRecord] = []
         var useVisionNext = configuration.visionPolicy == .always
         var consecutiveFailures = 0
+        /// Executor calls in a row that got no reply at all; a reply that did not parse is a reply.
+        var unanswered = 0
         var previousSignature: Int?
         var answerForModel: String?
         var stepsInSubtask = 0
@@ -804,12 +831,21 @@ actor AssistantRuntime {
                 let reply = try await complete(provider, request)
                 planned = try AgentModelResponseParser.parse(reply.text)
                 consecutiveFailures = 0
+                unanswered = 0
             } catch is CancellationError {
                 finish(instruction, kind: .stopped, summary: "Stopped.")
                 return .ended
             } catch {
                 consecutiveFailures += 1
+                unanswered = error is AgentProtocolError ? 0 : unanswered + 1
                 let detail = Self.describe(error)
+                // A run nobody watches ends when its executor is down instead of spending the
+                // rest of its steps on it.
+                if unanswered >= 2, dependencies.unattendedGate != nil {
+                    emit(instruction, step: stepIndex, kind: .planned, summary: "Executor model failed again: \(detail)")
+                    finish(instruction, kind: .failed, summary: "executor model unreachable")
+                    return .ended
+                }
                 if consecutiveFailures >= 3 { return .stuck(reason: "The executor could not plan a step: \(detail)") }
                 history.append(StepRecord(index: stepIndex, reason: "", action: .wait(milliseconds: 100),
                                           result: "model reply unusable (\(detail)); answer with one JSON action"))
@@ -931,6 +967,21 @@ actor AssistantRuntime {
             // Nothing was asked to be written, so text typed into a chat app is a guess about
             // which box has focus; the message box is one Return away from a send.
             decision = .requireApproval(reason: "Typing in a chat app when you asked for nothing to be written; approve only if it is a search box.")
+        }
+        if let unattendedGate = dependencies.unattendedGate {
+            switch await unattendedGate(action, observation, decision) {
+            case .allow:
+                return .allowed
+            case let .block(reason):
+                emit(instruction, step: totalSteps, kind: .blocked, summary: reason, action: action, stepID: stepID)
+                finish(instruction, kind: .failed, summary: reason)
+            case let .requireApproval(reason):
+                emit(instruction, step: totalSteps, kind: .needsApproval, summary: reason, action: action, stepID: stepID)
+                finish(instruction, kind: .failed, summary: "Needs approval, and no one is there to give it: \(reason)")
+            }
+            // Some callers go on after an ended step (the jump box's Escape); this stops them.
+            stopRequested = true
+            return .ended
         }
         switch decision {
         case .allow:

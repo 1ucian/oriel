@@ -42,6 +42,103 @@ enum AssistantVisionPolicy: String, CaseIterable, Identifiable, Codable {
     }
 }
 
+/// Ready-made model sets, downloaded on demand through Ollama. Both navigate with the same
+/// small, fast models (Apple's on-device model when this Mac has it, otherwise Qwen3.5 4B,
+/// with Qwen3.5 4B as the eyes), so clicks and typing feel the same; Standard spends its
+/// memory on a bigger planner, which plans and reads the answers.
+enum AssistantProfile: String, CaseIterable, Identifiable, Codable {
+    case lite
+    case standard
+    case custom
+
+    var id: Self { self }
+
+    static let navigationModel = "qwen3.5:4b"
+
+    var title: String {
+        switch self {
+        case .lite: "Lite"
+        case .standard: "Standard"
+        case .custom: "Custom"
+        }
+    }
+
+    var minimumMemoryGigabytes: Int? {
+        switch self {
+        case .lite: 16
+        case .standard: 32
+        case .custom: nil
+        }
+    }
+
+    var plannerModel: String? {
+        switch self {
+        case .lite: "qwen3.5:4b"
+        case .standard: "qwen3.5:9b"
+        case .custom: nil
+        }
+    }
+
+    /// What Ollama has to hold for this profile.
+    var models: [String] {
+        guard let plannerModel else { return [] }
+        return Array(Set([plannerModel, Self.navigationModel])).sorted()
+    }
+
+    var downloadGigabytes: Double {
+        switch self {
+        case .lite: 3.3
+        case .standard: 9.9
+        case .custom: 0
+        }
+    }
+
+    var summary: String {
+        switch self {
+        case .lite: "Fast navigation with a 4B planner. Needs 16 GB of memory and a 3.3 GB download."
+        case .standard: "The same fast navigation with a 9B planner that plans and reads answers more reliably. Needs 32 GB of memory and a 9.9 GB download."
+        case .custom: "Choose each model and where it runs."
+        }
+    }
+
+    static var memoryGigabytes: Int {
+        Int((Double(ProcessInfo.processInfo.physicalMemory) / 1_073_741_824).rounded())
+    }
+
+    static func recommended(memoryGigabytes: Int) -> AssistantProfile {
+        memoryGigabytes >= 32 ? .standard : .lite
+    }
+
+    func fits(memoryGigabytes: Int) -> Bool {
+        memoryGigabytes >= (minimumMemoryGigabytes ?? 0)
+    }
+
+    /// The planner, executor and eyes this profile uses on a Mac with or without Apple's model.
+    func endpoints(appleModelAvailable: Bool) -> (planner: AssistantEndpointSettings, executor: AssistantEndpointSettings, vision: String)? {
+        guard let plannerModel else { return nil }
+        let url = AssistantSettings.defaultOllamaURL
+        let executor = appleModelAvailable
+            ? AssistantEndpointSettings(kind: .appleOnDevice, baseURL: url, model: AppleModelProvider.modelID)
+            : AssistantEndpointSettings(kind: .ollama, baseURL: url, model: Self.navigationModel)
+        return (AssistantEndpointSettings(kind: .ollama, baseURL: url, model: plannerModel), executor, Self.navigationModel)
+    }
+
+    /// The profile a set of settings amounts to, or custom.
+    static func matching(planner: AssistantEndpointSettings, executor: AssistantEndpointSettings, vision: String) -> AssistantProfile {
+        for profile in [AssistantProfile.lite, .standard] {
+            for apple in [true, false] {
+                if let set = profile.endpoints(appleModelAvailable: apple),
+                   set.planner.kind == planner.kind, set.planner.resolvedModel == planner.resolvedModel,
+                   set.executor.kind == executor.kind, set.executor.resolvedModel == executor.resolvedModel,
+                   set.vision == vision {
+                    return profile
+                }
+            }
+        }
+        return .custom
+    }
+}
+
 /// One role's endpoint: the planner (big brain) or the executor (fast brain).
 struct AssistantEndpointSettings: Equatable, Codable {
     var kind: AssistantProviderKind
@@ -147,6 +244,53 @@ struct AssistantEndpointSettings: Equatable, Codable {
     }
 }
 
+/// The downloads a profile needs, as the settings screen shows them.
+@MainActor
+@Observable
+final class AssistantProfileDownloads {
+    static let shared = AssistantProfileDownloads()
+
+    private(set) var installed: Set<String> = []
+    private(set) var progress: [String: Double] = [:]
+    /// Nil until checked.
+    private(set) var ollamaRunning: Bool?
+    private(set) var lastError: String?
+
+    private var baseURL: URL { URL(string: AssistantSettings.defaultOllamaURL)! }
+
+    func refresh() async {
+        do {
+            installed = try await OllamaModelLibrary.installed(at: baseURL)
+            ollamaRunning = true
+        } catch {
+            ollamaRunning = false
+        }
+    }
+
+    func isInstalled(_ model: String) -> Bool {
+        installed.contains(model) || installed.contains(model + ":latest")
+    }
+
+    /// Downloads what is missing, one model at a time.
+    func download(_ models: [String]) async {
+        await refresh()
+        guard ollamaRunning == true else { return }
+        lastError = nil
+        for model in models where !isInstalled(model) && progress[model] == nil {
+            progress[model] = 0
+            do {
+                try await OllamaModelLibrary.pull(model, at: baseURL) { fraction in
+                    Task { @MainActor in AssistantProfileDownloads.shared.progress[model] = fraction }
+                }
+                installed.insert(model)
+            } catch {
+                lastError = "\(model): \(error)"
+            }
+            progress[model] = nil
+        }
+    }
+}
+
 @MainActor
 @Observable
 final class AssistantSettings {
@@ -165,6 +309,7 @@ final class AssistantSettings {
         case executor
     }
 
+    var profile: AssistantProfile { didSet { save() } }
     var planner: AssistantEndpointSettings { didSet { save() } }
     var executor: AssistantEndpointSettings { didSet { save() } }
     var visionModel: String { didSet { save() } }
@@ -187,9 +332,14 @@ final class AssistantSettings {
         self.defaults = defaults
         self.plannerSecrets = plannerSecrets
         self.executorSecrets = executorSecrets
-        planner = Self.endpoint(defaults, Keys.planner) ?? .plannerDefault
-        executor = Self.endpoint(defaults, Keys.executor) ?? .executorDefault
-        visionModel = defaults.string(forKey: Keys.visionModel) ?? EmbeddedModelCatalog.vision.id
+        let storedPlanner = Self.endpoint(defaults, Keys.planner) ?? .plannerDefault
+        let storedExecutor = Self.endpoint(defaults, Keys.executor) ?? .executorDefault
+        let storedVision = defaults.string(forKey: Keys.visionModel) ?? EmbeddedModelCatalog.vision.id
+        profile = AssistantProfile(rawValue: defaults.string(forKey: Keys.profile) ?? "")
+            ?? AssistantProfile.matching(planner: storedPlanner, executor: storedExecutor, vision: storedVision)
+        planner = storedPlanner
+        executor = storedExecutor
+        visionModel = storedVision
         visionPolicy = AssistantVisionPolicy(rawValue: defaults.string(forKey: Keys.visionPolicy) ?? "") ?? .auto
         screenshotsAllowedToRemote = defaults.bool(forKey: Keys.screenshotsAllowedToRemote)
         let steps = defaults.integer(forKey: Keys.maximumSteps)
@@ -201,7 +351,19 @@ final class AssistantSettings {
         loading = false
     }
 
+    /// Switches to a profile's models; the downloads it needs are started by the caller.
+    func use(_ chosen: AssistantProfile, appleModelAvailable: Bool = AppleModelProvider.availability == .available) {
+        if let set = chosen.endpoints(appleModelAvailable: appleModelAvailable) {
+            planner = set.planner
+            executor = set.executor
+            visionModel = set.vision
+            visionPolicy = .auto
+        }
+        profile = chosen
+    }
+
     private enum Keys {
+        static let profile = "assistant.profile"
         static let planner = "assistant.planner"
         static let executor = "assistant.executor"
         static let visionModel = "assistant.visionModel"
@@ -218,6 +380,7 @@ final class AssistantSettings {
 
     private func save() {
         guard !loading else { return }
+        defaults.set(profile.rawValue, forKey: Keys.profile)
         defaults.set(try? JSONEncoder().encode(planner), forKey: Keys.planner)
         defaults.set(try? JSONEncoder().encode(executor), forKey: Keys.executor)
         defaults.set(visionModel, forKey: Keys.visionModel)

@@ -48,6 +48,7 @@ targets:
     info:
       path: Apps/HermesCaptureMac/Info.plist
       properties:
+        CFBundleName: Oriel
         CFBundleDisplayName: Oriel
         CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)

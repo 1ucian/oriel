@@ -212,6 +212,24 @@ struct AssistantSubtask: Equatable, Sendable {
         }
     }
 
+    /// The text lines right above a chat app's message box, in the conversation's own column
+    /// (the sidebar is left out), oldest first: where the newest messages are.
+    static func linesAboveMessageBox(in observation: AgentObservation, limit: Int = 6) -> [String] {
+        let composers = observation.elements.filter { element in
+            let label = element.label.lowercased()
+            return label.hasPrefix("message ") || label.hasPrefix("imessage") || label.contains("type a message")
+                || label.contains("write a message")
+        }
+        guard let box = composers.max(by: { $0.centerY < $1.centerY }) else { return [] }
+        let left = box.centerX - box.width / 2 - 0.03
+        let right = box.centerX + box.width / 2 + 0.03
+        return observation.texts
+            .filter { $0.centerY < box.centerY - box.height / 2 && (left...right).contains($0.centerX) }
+            .sorted { $0.centerY < $1.centerY }
+            .suffix(limit)
+            .map(\.text)
+    }
+
     /// Lines a chat app shows by the message box that are not messages: Slack's "It's 1:11 AM
     /// for dana" (the person's local time) and typing indicators.
     static func withoutChatChrome(_ observation: AgentObservation) -> AgentObservation {
@@ -520,8 +538,14 @@ enum AssistantPlanner {
     for those); when revising after a report, return only the remaining plan.
     """
 
-    static func initialMessage(instruction: AgentInstruction, observation: AgentObservation, history: [String] = []) -> String {
+    static func initialMessage(instruction: AgentInstruction, observation: AgentObservation, history: [String] = [],
+                               readOnly: Bool = false) -> String {
         var text = ""
+        if readOnly {
+            text += "This is a read-only request: do not plan any action that touches the Mac "
+                + "(no clicks, typing, keys, scrolling or opening apps). Answer only from what is on the "
+                + "screen now; reply with {\"done\":\"<the answer>\"} quoting the screen.\n\n"
+        }
         if !history.isEmpty {
             text += "Earlier in this session, oldest first (the owner may refer to these):\n"
             for (index, line) in history.suffix(AssistantRuntime.episodeLimit).enumerated() {
@@ -549,20 +573,73 @@ enum AssistantPlanner {
         }
         text = text.replacingOccurrences(of: "```json", with: "").replacingOccurrences(of: "```", with: "")
             .trimmingCharacters(in: .whitespacesAndNewlines)
-        if let start = text.firstIndex(of: "{"), let end = text.lastIndex(of: "}"), start < end,
-           let data = String(text[start...end]).data(using: .utf8),
-           let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
-            if object["plan"] != nil || object["ask"] != nil { return nil }
-            for key in ["done", "answer", "result", "reply", "text", "message", "summary", "note"] {
-                if let value = object[key] as? String {
-                    let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
-                    if !trimmed.isEmpty { return trimmed }
+        let objects = topLevelObjects(in: text)
+        if !objects.isEmpty {
+            let answers = objects.filter { $0["plan"] == nil && $0["ask"] == nil }
+            for object in answers {
+                for key in ["done", "answer", "result", "reply", "text", "message", "summary", "note"] {
+                    if let value = object[key], let answer = flattened(value) { return answer }
                 }
             }
-            return nil
+            // {"who": "...", "what": "..."}: the fields themselves are the answer.
+            return answers.lazy.compactMap { flattened($0) }.first
         }
         guard !text.contains("{"), (2...600).contains(text.count) else { return nil }
         return text
+    }
+
+    /// Every top-level JSON object in a reply, in order (a small model sometimes sends a plan
+    /// and then the answer).
+    private static func topLevelObjects(in text: String) -> [[String: Any]] {
+        var objects: [[String: Any]] = []
+        var depth = 0
+        var inString = false
+        var escaped = false
+        var start: String.Index?
+        for index in text.indices {
+            let character = text[index]
+            if inString {
+                if escaped { escaped = false } else if character == "\\" { escaped = true } else if character == "\"" { inString = false }
+                continue
+            }
+            switch character {
+            case "\"": inString = true
+            case "{":
+                if depth == 0 { start = index }
+                depth += 1
+            case "}" where depth > 0:
+                depth -= 1
+                if depth == 0, let begin = start,
+                   let data = String(text[begin...index]).data(using: .utf8),
+                   let object = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] {
+                    objects.append(object)
+                }
+            default: break
+            }
+        }
+        return objects
+    }
+
+    /// An answer value as words: text as is, an object as "field: value" pairs, a list joined.
+    private static func flattened(_ value: Any) -> String? {
+        let text: String
+        switch value {
+        case let string as String: text = string
+        case let number as NSNumber: text = number.stringValue
+        case let object as [String: Any]:
+            // {"sender": ..., "time": ..., "message": ...} reads as "Sender at time: message".
+            func first(_ keys: [String]) -> String? { keys.lazy.compactMap { object[$0] as? String }.first }
+            if let who = first(["sender", "from", "author", "who", "name", "user", "posted_by"]),
+               let said = first(["message", "text", "content", "says", "said", "words", "quote", "what", "body"]) {
+                text = who + (first(["time", "timestamp", "at", "when"]).map { " at \($0)" } ?? "") + ": " + said
+            } else {
+                text = object.keys.sorted().compactMap { key in flattened(object[key]!).map { "\(key): \($0)" } }.joined(separator: ", ")
+            }
+        case let list as [Any]: text = list.compactMap(flattened).joined(separator: ", ")
+        default: return nil
+        }
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : String(trimmed.prefix(600))
     }
 
     /// The last word on a question: the steps are done and the answer is on the screen.
@@ -581,6 +658,12 @@ enum AssistantPlanner {
             text += "Give who sent it, the time if shown, and its words. Headers, a person's status and lines such as "
             text += "\"It's 12:46 AM for dana\" (their local time) are not messages. Asked whether someone sent anything "
             text += "new, say whether the newest message is from them and quote it. "
+            let newest = AssistantSubtask.linesAboveMessageBox(in: AssistantSubtask.withoutChatChrome(observation))
+            if !newest.isEmpty {
+                text += "\n\nThe lines just above the message box, oldest first. The last one is the newest message, and its sender is "
+                text += "the nearest name above it (a name followed by a time):\n"
+                text += newest.enumerated().map { "\($0.offset + 1). \($0.element)" }.joined(separator: "\n") + "\n"
+            }
         }
         text += "If the screen does not show the answer, say what it shows instead.\n\n"
         // In a conversation the person's name is on every header and status line; pinning it

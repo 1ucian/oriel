@@ -189,6 +189,11 @@ enum ActivityLogRedaction {
     }
 
     static func trace(_ event: AgentTraceEvent) -> String {
+        "run \(event.instructionID.prefix(8)) step \(event.stepIndex) \(event.kind.rawValue): \(scrub(summary(event)))"
+    }
+
+    /// A trace event's summary with typed text and the owner's answers kept by length only.
+    static func summary(_ event: AgentTraceEvent) -> String {
         var summary = event.summary
         if case let .type(text)? = event.action, !text.isEmpty {
             let length = "(\(text.count) characters)"
@@ -201,7 +206,7 @@ enum ActivityLogRedaction {
         if event.kind == .answered {
             summary = "(\(event.summary.count) characters)"
         }
-        return "run \(event.instructionID.prefix(8)) step \(event.stepIndex) \(event.kind.rawValue): \(scrub(summary))"
+        return summary
     }
 
     static func control(_ control: AgentControl) -> String {

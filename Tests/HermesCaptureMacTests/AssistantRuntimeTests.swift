@@ -13,6 +13,7 @@ struct AssistantRuntimeTests {
         private var replies: [String]
         private(set) var requests: [AssistantModelRequest] = []
         private(set) var released: [String] = []
+        private(set) var warmed: [String] = []
         private let lock = NSLock()
         init(_ replies: [String]) { self.replies = replies }
         var displayName: String { "scripted" }
@@ -28,6 +29,7 @@ struct AssistantRuntimeTests {
 
         func listModels() async throws -> [String] { ["fast", "vision"] }
         func release(models: [String]) async { lock.withLock { released += models } }
+        func warm(models: [String]) async { lock.withLock { warmed += models } }
     }
 
     final class Recorder: @unchecked Sendable {
@@ -147,7 +149,20 @@ struct AssistantRuntimeTests {
         #expect(recorder.last?.kind == .finished && recorder.last?.summary == "Saved the note.")
         #expect(recorder.screenshotRequests == 0)
         try? await Task.sleep(nanoseconds: 300_000_000)
-        #expect(planner.released == ["big"] && executor.released == ["fast"], "Both brains are released when the run ends")
+        #expect(planner.released.isEmpty && executor.released.isEmpty, "Models stay loaded between runs while the phone is connected")
+        await runtime.releaseModels()
+        #expect(planner.released == ["big"] && executor.released == ["fast"], "Both brains are released when the session ends")
+    }
+
+    @Test func modelsAreLoadedWhenThePhoneConnects() async throws {
+        let planner = Scripted([])
+        let executor = Scripted([])
+        let (runtime, _) = makeRuntime(configuration(planner: planner, executor: executor), observation: observation())
+        await runtime.warmModels()
+        #expect(planner.warmed == ["big"])
+        #expect(executor.warmed == ["fast"])
+        await runtime.releaseModels()
+        #expect(planner.released == ["big"] && executor.released == ["fast"], "What was warmed is let go when the session ends")
     }
 
     @Test func directActionsNeedNoExecutorCall() async throws {

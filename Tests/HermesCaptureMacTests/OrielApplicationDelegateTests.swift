@@ -116,6 +116,45 @@ struct OrielApplicationDelegateTests {
         #expect(!delegate.captureRunning)
     }
 
+    /// Lucian 10-07: a Screen Recording prompt from a start at login sat behind other windows and
+    /// kept resurfacing. A background start never asks; capture starts once access is there.
+    @Test func backgroundStartNeverAsksAndStartsCaptureOnceAccessArrives() async throws {
+        let events = LifecycleEvents()
+        let captureBridge = FakeApplicationCaptureBridge(events: events)
+        let pairingBridge = FakeApplicationPairingBridge(events: events)
+        var granted = false
+        var permissionRequestCount = 0
+        let delegate = OrielApplicationDelegate(
+            captureBridgeFactory: { captureBridge },
+            pairingBridge: pairingBridge,
+            screenCapturePreflight: { granted },
+            screenCaptureRequest: {
+                permissionRequestCount += 1
+                return true
+            },
+            asksForScreenCapture: false
+        )
+        delegate.screenCapturePollInterval = .milliseconds(20)
+
+        delegate.applicationDidFinishLaunching(
+            Notification(name: NSApplication.didFinishLaunchingNotification)
+        )
+        try await Task.sleep(for: .milliseconds(100))
+        #expect(permissionRequestCount == 0)
+        #expect(!delegate.captureRunning)
+        #expect(events.values == [.pairingAvailabilityStarted])
+
+        granted = true
+        for _ in 0..<100 where !delegate.captureRunning {
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        #expect(delegate.captureRunning)
+        #expect(permissionRequestCount == 0, "Access arrived without a prompt")
+
+        await delegate.prepareForTermination()
+        #expect(!delegate.captureRunning)
+    }
+
     @Test func theLocalCaptureBridgeIsOffUntilTheOwnerTurnsItOn() throws {
         let suite = "oriel.tests.capture-bridge.\(UUID().uuidString)"
         let defaults = try #require(UserDefaults(suiteName: suite))

@@ -244,8 +244,11 @@ actor MacRemoteSessionController {
                 await OrielWindows.receiveInput(at: point, displayID: displayID)
             }
         )
-        assistant = AssistantRuntime(configuration: configuration, dependencies: dependencies)
+        let runtime = AssistantRuntime(configuration: configuration, dependencies: dependencies)
+        assistant = runtime
         await sendStatus(isRunning: false)
+        // The phone just connected: load the models now, not when the first instruction comes.
+        Task { await runtime.warmModels() }
     }
 
     private func executeForAssistant(_ event: RemoteInputEvent) async throws {
@@ -286,7 +289,7 @@ actor MacRemoteSessionController {
         await assistant.run(instruction)
     }
 
-    private static func describe(_ role: AssistantModelRole) -> String {
+    static func describe(_ role: AssistantModelRole) -> String {
         role.displayName + (role.visionModel.map { ", eyes \($0)" } ?? "")
     }
 

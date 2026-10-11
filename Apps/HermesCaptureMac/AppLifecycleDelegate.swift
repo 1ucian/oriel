@@ -30,6 +30,12 @@ final class OrielApplicationDelegate: NSObject, NSApplicationDelegate {
     private let screenCapturePreflight: () -> Bool
     private let screenCaptureRequest: () -> Bool
     private let presentsPairingAtLaunch: Bool
+    /// Only a start the owner made asks for Screen Recording. A background start (launchd at
+    /// login, `--headless`) left its system prompt behind other windows, where it kept
+    /// resurfacing (Lucian 10-07); it waits for access instead.
+    private let asksForScreenCapture: Bool
+    var screenCapturePollInterval: Duration = .seconds(30)
+    private var screenCaptureWait: Task<Void, Never>?
     private let pairingPresentationOverride: (() -> Void)?
     /// A unit-test run hosts its tests in a development build of the app. That copy stays
     /// inert: no Screen Recording request (macOS prompts for each unsigned build), no pairing
@@ -43,6 +49,19 @@ final class OrielApplicationDelegate: NSObject, NSApplicationDelegate {
 
     static func captureBridgeEnabled(in defaults: UserDefaults) -> Bool {
         defaults.bool(forKey: captureBridgeDefaultsKey)
+    }
+    /// The local goal bridge lets any process of the user's hand the assistant a goal through
+    /// files beside the capture bridge's (see docs/COMPATIBILITY.md). It runs only when the
+    /// owner turned it on, and only once the capture bridge runs, whose cache it shares.
+    private let startsAssistantBridge: Bool
+    private var assistantBridge: LocalAssistantBridge?
+    /// The local input bridge puts the toolkit's input through Oriel's pipeline, so Oriel's
+    /// cursor shows while Hermes acts. It starts with the goal bridge, under the same flag.
+    private var inputBridge: LocalInputBridge?
+    static let assistantBridgeDefaultsKey = "localAssistantBridge.enabled"
+
+    static func assistantBridgeEnabled(in defaults: UserDefaults) -> Bool {
+        defaults.bool(forKey: assistantBridgeDefaultsKey)
     }
     private lazy var pairingWindowRegistry = PairingWindowRegistry { [unowned self] in
         OrielPairingWindowController(
@@ -68,10 +87,12 @@ final class OrielApplicationDelegate: NSObject, NSApplicationDelegate {
         self.screenCapturePreflight = { CGPreflightScreenCaptureAccess() }
         self.screenCaptureRequest = { CGRequestScreenCaptureAccess() }
         self.presentsPairingAtLaunch = !CommandLine.arguments.contains("--headless")
+        self.asksForScreenCapture = !CommandLine.arguments.contains("--headless")
         self.pairingPresentationOverride = nil
         let environment = ProcessInfo.processInfo.environment
         self.hostsTests = environment["XCTestConfigurationFilePath"] != nil || environment["XCTestSessionIdentifier"] != nil
         self.startsCaptureBridge = Self.captureBridgeEnabled(in: .standard)
+        self.startsAssistantBridge = Self.assistantBridgeEnabled(in: .standard)
         super.init()
     }
 
@@ -89,9 +110,11 @@ final class OrielApplicationDelegate: NSObject, NSApplicationDelegate {
         self.screenCapturePreflight = { true }
         self.screenCaptureRequest = { true }
         self.presentsPairingAtLaunch = presentsPairingAtLaunch
+        self.asksForScreenCapture = presentsPairingAtLaunch
         self.pairingPresentationOverride = presentPairing
         self.hostsTests = false
         self.startsCaptureBridge = true
+        self.startsAssistantBridge = false
         super.init()
     }
 
@@ -99,7 +122,8 @@ final class OrielApplicationDelegate: NSObject, NSApplicationDelegate {
         captureBridgeFactory: @escaping () throws -> any ApplicationCaptureBridging,
         pairingBridge: any ApplicationPairingBridging,
         screenCapturePreflight: @escaping () -> Bool,
-        screenCaptureRequest: @escaping () -> Bool = { false }
+        screenCaptureRequest: @escaping () -> Bool = { false },
+        asksForScreenCapture: Bool = true
     ) {
         self.pairingCoordinator = PairingCoordinator()
         self.screenProfiles = ScreenProfileController()
@@ -107,10 +131,12 @@ final class OrielApplicationDelegate: NSObject, NSApplicationDelegate {
         self.captureBridgeFactory = captureBridgeFactory
         self.screenCapturePreflight = screenCapturePreflight
         self.screenCaptureRequest = screenCaptureRequest
+        self.asksForScreenCapture = asksForScreenCapture
         self.presentsPairingAtLaunch = false
         self.pairingPresentationOverride = nil
         self.hostsTests = false
         self.startsCaptureBridge = true
+        self.startsAssistantBridge = false
         super.init()
     }
 
@@ -128,7 +154,31 @@ final class OrielApplicationDelegate: NSObject, NSApplicationDelegate {
         }
         guard startsCaptureBridge, captureBridge == nil else { return }
         guard !terminationPending && !terminationPrepared else { return }
-        guard screenCapturePreflight() || screenCaptureRequest() else { return }
+        if screenCapturePreflight() || (asksForScreenCapture && screenCaptureRequest()) {
+            startCaptureBridge()
+        } else if !asksForScreenCapture {
+            waitForScreenCaptureAccess()
+        }
+    }
+
+    /// Checks again now and then, without asking, and starts capture once access is there.
+    private func waitForScreenCaptureAccess() {
+        screenCaptureWait?.cancel()
+        screenCaptureWait = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(for: self?.screenCapturePollInterval ?? .seconds(30))
+                guard let self, !Task.isCancelled, !self.terminationPending, !self.terminationPrepared,
+                      self.captureBridge == nil else { return }
+                if self.screenCapturePreflight() {
+                    self.startCaptureBridge()
+                    return
+                }
+            }
+        }
+    }
+
+    private func startCaptureBridge() {
+        guard captureBridge == nil else { return }
         do {
             let bridge = try captureBridgeFactory()
             captureBridge = bridge
@@ -136,6 +186,7 @@ final class OrielApplicationDelegate: NSObject, NSApplicationDelegate {
                 do {
                     try await bridge.start()
                     captureRunning = true
+                    startAssistantBridge()
                 } catch {
                     captureRunning = false
                     NSLog("Oriel could not start its local capture bridge: %@", String(describing: error))
@@ -146,11 +197,36 @@ final class OrielApplicationDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
+    private func startAssistantBridge() {
+        guard startsAssistantBridge, assistantBridge == nil, terminationTask == nil,
+              !terminationPending, !terminationPrepared else { return }
+        let bridge = LocalAssistantBridge.makeDefault()
+        do {
+            try bridge.start()
+            assistantBridge = bridge
+        } catch {
+            NSLog("Oriel could not start its local goal bridge: %@", String(describing: error))
+        }
+        let input = LocalInputBridge.makeDefault(goalRunActive: { [weak self] in self?.assistantBridge?.isRunning ?? false })
+        do {
+            try input.start()
+            inputBridge = input
+        } catch {
+            NSLog("Oriel could not start its local input bridge: %@", String(describing: error))
+        }
+    }
+
     func applicationShouldHandleReopen(
         _ sender: NSApplication,
         hasVisibleWindows flag: Bool
     ) -> Bool {
         presentPairing()
+        // The owner opened Oriel: a capture still waiting for access may ask now.
+        if startsCaptureBridge, captureBridge == nil, !terminationPending, !terminationPrepared,
+           screenCapturePreflight() || screenCaptureRequest() {
+            screenCaptureWait?.cancel()
+            startCaptureBridge()
+        }
         return true
     }
 
@@ -170,11 +246,16 @@ final class OrielApplicationDelegate: NSObject, NSApplicationDelegate {
         let captureBridge = captureBridge
         let captureStartupTask = captureStartupTask
         let pairingBridge = pairingBridge
+        let assistantBridge = assistantBridge
+        let inputBridge = inputBridge
+        screenCaptureWait?.cancel()
         let task = Task {
             captureStartupTask?.cancel()
             if let captureStartupTask {
                 await captureStartupTask.value
             }
+            await inputBridge?.stop()
+            await assistantBridge?.stop()
             await pairingBridge.shutdown()
             if let captureBridge {
                 await captureBridge.stop()

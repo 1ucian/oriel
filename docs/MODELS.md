@@ -2,6 +2,20 @@
 
 Two brains, both open, both yours.
 
+## Profiles
+
+Settings, Assistant, Models offers two ready-made sets, downloaded through Ollama only when
+one is chosen, and Custom for anything else.
+
+| Profile | Memory | Planner (plans, reads answers) | Executor (navigates) | Eyes | Download |
+|---|---|---|---|---|---|
+| Lite | 16 GB | Qwen3.5 4B | Apple on-device, else Qwen3.5 4B | Qwen3.5 4B | 3.3 GB |
+| Standard | 32 GB | Qwen3.5 9B | Apple on-device, else Qwen3.5 4B | Qwen3.5 4B | 9.9 GB |
+
+Both navigate with the same small, fast models, so clicks and typing are equally quick;
+Standard spends its memory on the planner. The profile that suits the Mac's memory is marked
+recommended, and settings that already match a profile show as that profile.
+
 | Role | What it does | Default model | License | Where it runs |
 |---|---|---|---|---|
 | Planner (the prefrontal cortex) | Turns your instruction into small, screen-verifiable sub-tasks; pre-scripts the certain steps as direct actions; revises when the executor is stuck. Sees text only, never pixels. | Apple on-device (macOS 26), else Qwen3.5 9B (or any larger local model, or your own frontier key) | Apache-2.0 | Ollama on the Mac or your network, an OpenAI-compatible server, or Anthropic with your key |
@@ -27,7 +41,7 @@ Rules the code enforces (see `ScreenshotSharingPolicy`, `AgentApprovalPolicy` an
 
 - A model on this Mac or on the user's own network may receive screenshots. A model on the internet receives text only, unless the user switches "Share screenshots with an executor on the internet" on in Settings and allows it on the phone for that run.
 - The planner never receives pixels, wherever it runs.
-- Models are loaded on demand when a run starts and released when it ends (Ollama `keep_alive`, the built-in engine drops its weights). Nothing is kept warm while Oriel idles.
+- Models load when the phone connects and stay loaded while it is connected (Ollama `keep_alive`, at most ten idle minutes), so no run waits for them; they are released when the phone disconnects. Nothing stays loaded while no phone is connected.
 - Protected surfaces (passwords, one-time codes, payments, security dialogs, CAPTCHA, destructive and public actions, medical-record signing) are refused or routed to the owner before any input reaches the Mac.
 
 ## Licenses of the defaults

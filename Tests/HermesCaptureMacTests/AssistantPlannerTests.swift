@@ -196,6 +196,27 @@ struct AssistantPlannerTests {
         #expect(!AssistantSubtask.shows("84", in: screen))
     }
 
+    @Test func theNewestLinesAreTheOnesRightAboveTheMessageBox() {
+        func line(_ id: Int, _ text: String, x: Double, y: Double) -> AgentObservedText {
+            AgentObservedText(id: "t\(id)", text: text, centerX: x, centerY: y, width: 0.2, height: 0.02, isSensitive: false)
+        }
+        let box = AgentObservedElement(id: "e1", role: "textArea", label: "Message #qa", centerX: 0.62, centerY: 0.93,
+                                       width: 0.6, height: 0.05, isEnabled: true, isSensitive: false)
+        let screen = AgentObservation(
+            frontmostApplication: "Slack", frontmostBundleIdentifier: "com.tinyspeck.slackmacgap", windowTitle: "qa (Channel) - acme - Slack",
+            displayWidth: 1_000, displayHeight: 1_000, pointerX: nil, pointerY: nil, elements: [box],
+            texts: [line(1, "# qa", x: 0.15, y: 0.40), line(2, "Dana Okafor 4:29 PM", x: 0.45, y: 0.70),
+                    line(3, "Fixed both issues, deploying.", x: 0.55, y: 0.74), line(4, "Alex Rivera 4:31 PM", x: 0.45, y: 0.82),
+                    line(5, "Yes please", x: 0.42, y: 0.86), line(6, "Message #qa", x: 0.40, y: 0.93)],
+            capturedAtNanoseconds: 1)
+        #expect(AssistantSubtask.linesAboveMessageBox(in: screen)
+                == ["Dana Okafor 4:29 PM", "Fixed both issues, deploying.", "Alex Rivera 4:31 PM", "Yes please"],
+                "The sidebar's # qa and the box's own placeholder are not messages")
+        let message = AssistantPlanner.answerMessage(instruction: try! AgentInstruction(id: "q", text: "who posted last in #qa?"),
+                                                     completed: [], observation: screen)
+        #expect(message.contains("4. Yes please"))
+    }
+
     @Test func slacksLocalTimeBannerIsNotAMessage() {
         let lines = ["dana", "Lunch at noon works for me", "It’s 1:11 AM for dana", "Dana is typing…"]
         let screen = AgentObservation(frontmostApplication: "Slack", frontmostBundleIdentifier: "com.tinyspeck.slackmacgap", windowTitle: nil,
@@ -213,7 +234,66 @@ struct AssistantPlannerTests {
         #expect(AssistantPlanner.answerText(in: "<think>the bottom line</think>The last message is from Alex: Yes please.")
                 == "The last message is from Alex: Yes please.")
         #expect(AssistantPlanner.answerText(in: #"{"plan":[{"goal":"Read it","done_when":"read"}]}"#) == nil)
+        #expect(AssistantPlanner.answerText(in: #"{"done":{"sender":"Alex Rivera","message":"Yes please"}}"#)
+                == "Alex Rivera: Yes please")
+        #expect(AssistantPlanner.answerText(in: #"{"done":{"sender":"Alex Rivera","time":"4:31 PM","text":"Yes please"}}"#)
+                == "Alex Rivera at 4:31 PM: Yes please")
+        #expect(AssistantPlanner.answerText(in: #"{"who":"Alex Rivera","what":"Yes please"}"#) == "Alex Rivera: Yes please")
+        #expect(AssistantPlanner.answerText(in: #"{"done":{"sender":"Alex Rivera","time":"5:06 PM","words":"Lunch at noon"}}"#)
+                == "Alex Rivera at 5:06 PM: Lunch at noon")
+        #expect(AssistantPlanner.answerText(in: #"{"channel":"qa","count":3}"#) == "channel: qa, count: 3")
+        #expect(AssistantPlanner.answerText(in: "{\"plan\":[{\"goal\":\"Read it\"}]}\n{\"done\":\"Alex Rivera: Yes please\"}")
+                == "Alex Rivera: Yes please", "A plan and then the answer")
+        #expect(AssistantPlanner.answerText(in: #"{"done":"He wrote {braces} and \"quotes\""}"#) == #"He wrote {braces} and "quotes""#)
         #expect(AssistantPlanner.answerText(in: "  ") == nil)
+    }
+
+    @Test func profilesKeepNavigationSmallAndGrowThePlanner() throws {
+        let lite = try #require(AssistantProfile.lite.endpoints(appleModelAvailable: true))
+        #expect(lite.planner.kind == .ollama && lite.planner.model == "qwen3.5:4b")
+        #expect(lite.executor.kind == .appleOnDevice)
+        #expect(lite.vision == "qwen3.5:4b")
+        let standard = try #require(AssistantProfile.standard.endpoints(appleModelAvailable: false))
+        #expect(standard.planner.model == "qwen3.5:9b")
+        #expect(standard.executor.kind == .ollama && standard.executor.model == "qwen3.5:4b", "Without Apple's model, navigation stays on the 4B")
+        #expect(standard.vision == "qwen3.5:4b")
+        #expect(AssistantProfile.lite.models == ["qwen3.5:4b"])
+        #expect(AssistantProfile.standard.models == ["qwen3.5:4b", "qwen3.5:9b"])
+        #expect(AssistantProfile.custom.endpoints(appleModelAvailable: true) == nil)
+    }
+
+    @Test func memoryPicksTheProfile() {
+        #expect(AssistantProfile.recommended(memoryGigabytes: 8) == .lite)
+        #expect(AssistantProfile.recommended(memoryGigabytes: 16) == .lite)
+        #expect(AssistantProfile.recommended(memoryGigabytes: 24) == .lite)
+        #expect(AssistantProfile.recommended(memoryGigabytes: 32) == .standard)
+        #expect(AssistantProfile.recommended(memoryGigabytes: 64) == .standard)
+        #expect(AssistantProfile.lite.fits(memoryGigabytes: 16))
+        #expect(!AssistantProfile.standard.fits(memoryGigabytes: 16))
+        #expect(AssistantProfile.standard.fits(memoryGigabytes: 32))
+    }
+
+    @Test func existingSettingsAreRecognisedAsAProfile() throws {
+        let lite = try #require(AssistantProfile.lite.endpoints(appleModelAvailable: true))
+        #expect(AssistantProfile.matching(planner: lite.planner, executor: lite.executor, vision: lite.vision) == .lite)
+        let standard = try #require(AssistantProfile.standard.endpoints(appleModelAvailable: false))
+        #expect(AssistantProfile.matching(planner: standard.planner, executor: standard.executor, vision: standard.vision) == .standard)
+        #expect(AssistantProfile.matching(planner: standard.planner, executor: standard.executor, vision: "qwen2.5vl:7b") == .custom)
+        let apple = AssistantEndpointSettings(kind: .appleOnDevice, baseURL: AssistantSettings.defaultOllamaURL, model: AppleModelProvider.modelID)
+        #expect(AssistantProfile.matching(planner: apple, executor: apple, vision: "qwen2.5vl:7b") == .custom)
+    }
+
+    @Test func ollamaDownloadProgressIsReadFromItsStream() throws {
+        var progress = OllamaPullProgress()
+        #expect(try progress.read(#"{"status":"pulling manifest"}"#) == nil)
+        #expect(try progress.read(#"{"status":"pulling a1","digest":"sha256:a1","total":100,"completed":50}"#) == 0.5)
+        #expect(try progress.read(#"{"status":"pulling b2","digest":"sha256:b2","total":300,"completed":0}"#) == 0.125)
+        #expect(try progress.read(#"{"status":"pulling b2","digest":"sha256:b2","total":300,"completed":300}"#) == 0.875)
+        #expect(!progress.succeeded)
+        #expect(try progress.read(#"{"status":"success"}"#) == 1)
+        #expect(progress.succeeded)
+        var failing = OllamaPullProgress()
+        #expect(throws: OllamaLibraryError.self) { try failing.read(#"{"error":"pull model manifest: file does not exist"}"#) }
     }
 
     @Test func writingIntentIsRecognised() {

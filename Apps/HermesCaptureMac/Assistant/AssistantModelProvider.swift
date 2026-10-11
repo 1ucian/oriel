@@ -56,16 +56,21 @@ protocol AssistantModelProvider: Sendable {
     var displayName: String { get }
     func complete(_ request: AssistantModelRequest) async throws -> AssistantModelReply
     func listModels() async throws -> [String]
-    /// Models are loaded on demand; a run that is over gives the memory back.
+    /// Models stay loaded while the phone is connected; a session that is over gives the
+    /// memory back.
     func release(models: [String]) async
+    /// Loads models ahead of the first instruction, so the first step does not wait for them.
+    func warm(models: [String]) async
 }
 
 extension AssistantModelProvider {
     func release(models: [String]) async {}
+    func warm(models: [String]) async {}
 }
 
-/// Ollama's own API: `keep_alive` on every call so a model stays warm only during a run and
-/// is unloaded when the run ends, images as base64 on the message, `/api/tags` for the list.
+/// Ollama's own API: `keep_alive` on every call so a model stays warm between steps and
+/// runs (it is unloaded when the phone's session ends, or ten minutes after its last use),
+/// images as base64 on the message, `/api/tags` for the list.
 struct OllamaProvider: AssistantModelProvider {
     static let keepAliveDuringRun = "10m"
 
@@ -122,6 +127,13 @@ struct OllamaProvider: AssistantModelProvider {
     func release(models: [String]) async {
         for model in Set(models) where !model.isEmpty {
             _ = try? await post(path: "api/generate", body: ["model": model, "keep_alive": 0])
+        }
+    }
+
+    /// A generate call without a prompt loads the model and returns.
+    func warm(models: [String]) async {
+        for model in Set(models) where !model.isEmpty {
+            _ = try? await post(path: "api/generate", body: ["model": model, "keep_alive": Self.keepAliveDuringRun])
         }
     }
 
@@ -346,6 +358,14 @@ struct AnthropicProvider: AssistantModelProvider {
 
 extension URLSession {
     /// Model calls can take a while on a small machine; local servers never answer in 10 s.
+    /// Model downloads: minutes between bytes are fine, a 7 GB model can take an hour.
+    static let modelDownloadSession: URLSession = {
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.timeoutIntervalForRequest = 600
+        configuration.timeoutIntervalForResource = 4 * 3_600
+        return URLSession(configuration: configuration)
+    }()
+
     static let assistantSession: URLSession = {
         let configuration = URLSessionConfiguration.ephemeral
         configuration.timeoutIntervalForRequest = 180
@@ -353,4 +373,67 @@ extension URLSession {
         configuration.waitsForConnectivity = false
         return URLSession(configuration: configuration)
     }()
+}
+
+enum OllamaLibraryError: Error, CustomStringConvertible {
+    case unreachable
+    case failed(String)
+
+    var description: String {
+        switch self {
+        case .unreachable: "Ollama is not running on this Mac."
+        case let .failed(reason): reason
+        }
+    }
+}
+
+/// Models in Ollama: which are installed, and downloading one with progress.
+enum OllamaModelLibrary {
+    static func installed(at baseURL: URL) async throws -> Set<String> {
+        do {
+            return Set(try await OllamaProvider(baseURL: baseURL).listModels())
+        } catch {
+            throw OllamaLibraryError.unreachable
+        }
+    }
+
+    /// Downloads a model through Ollama, reporting the fraction done as its layers arrive.
+    static func pull(_ model: String, at baseURL: URL, progress: @escaping @Sendable (Double) -> Void) async throws {
+        var request = URLRequest(url: baseURL.appendingPathComponent("api/pull"))
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try JSONSerialization.data(withJSONObject: ["model": model, "stream": true])
+        let (bytes, response) = try await URLSession.modelDownloadSession.bytes(for: request)
+        guard (response as? HTTPURLResponse)?.statusCode == 200 else {
+            throw OllamaLibraryError.failed("Ollama would not download \(model).")
+        }
+        var tracker = OllamaPullProgress()
+        for try await line in bytes.lines {
+            if let fraction = try tracker.read(line) { progress(fraction) }
+            if tracker.succeeded { return }
+        }
+        throw OllamaLibraryError.failed("The download of \(model) stopped before it finished.")
+    }
+}
+
+/// Ollama's pull stream: one JSON object a line, with bytes done and total per layer.
+struct OllamaPullProgress {
+    private var layers: [String: (completed: Double, total: Double)] = [:]
+    private(set) var succeeded = false
+
+    mutating func read(_ line: String) throws -> Double? {
+        guard let data = line.data(using: .utf8),
+              let object = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else { return nil }
+        if let error = object["error"] as? String { throw OllamaLibraryError.failed(error) }
+        if (object["status"] as? String) == "success" {
+            succeeded = true
+            return 1
+        }
+        guard let digest = object["digest"] as? String,
+              let total = (object["total"] as? NSNumber)?.doubleValue, total > 0 else { return nil }
+        layers[digest] = ((object["completed"] as? NSNumber)?.doubleValue ?? 0, total)
+        let all = layers.values.reduce(0) { $0 + $1.total }
+        let done = layers.values.reduce(0) { $0 + $1.completed }
+        return min(done / all, 0.99)
+    }
 }

@@ -10,6 +10,46 @@ struct AssistantSettingsView: View {
 
     var body: some View {
         Form {
+            ProfileSection(settings: settings)
+            if settings.profile == .custom {
+                customSections
+            }
+
+            Section {
+                LabeledContent("The executor runs", value: localityLine(settings.executor))
+                LabeledContent("The planner runs", value: localityLine(settings.planner))
+                Toggle("Share screenshots with an executor on the internet", isOn: $settings.screenshotsAllowedToRemote)
+                    .accessibilityIdentifier("assistant.remoteScreenshots")
+                Stepper("Steps per instruction: \(settings.maximumSteps)", value: $settings.maximumSteps, in: 1...60)
+                Stepper("Steps per sub-task before re-planning: \(settings.stepsPerSubtask)", value: $settings.stepsPerSubtask, in: 2...20)
+            } header: {
+                Text("Privacy and limits")
+            } footer: {
+                Text("The screen is read on this Mac: accessibility controls and on-device text recognition, with secure fields and anything that looks like a secret left out. An executor on this Mac or on your network may also get a downscaled screenshot. On the internet it gets text only unless you switch screenshots on here and allow them on the phone for a run. The planner never gets pixels.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            if settings.planner.kind == .ollama || settings.executor.kind == .ollama {
+                Section("Ollama memory") {
+                    LabeledContent("Loaded now", value: loadedOllamaModels.isEmpty ? "nothing" : loadedOllamaModels.joined(separator: ", "))
+                    HStack {
+                        Button("Refresh") { refreshLoaded() }
+                        Button("Unload all") { unloadAll() }
+                            .disabled(loadedOllamaModels.isEmpty)
+                    }
+                    Text("Models load when the phone connects and stay loaded while it is connected, so each step is quick; they are unloaded when it disconnects or after ten idle minutes.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+        }
+        .formStyle(.grouped)
+        .onAppear(perform: refreshLoaded)
+    }
+
+    @ViewBuilder
+    private var customSections: some View {
             EndpointSection(
                 title: "Planner",
                 subtitle: "The big brain. Breaks your instruction into small sub-tasks and revises when the executor is stuck. Sees text only, never pixels. Worth a larger model, or your own frontier key.",
@@ -41,38 +81,6 @@ struct AssistantSettingsView: View {
             if settings.planner.kind == .builtIn || settings.executor.kind == .builtIn {
                 builtInModels
             }
-
-            Section {
-                LabeledContent("The executor runs", value: localityLine(settings.executor))
-                LabeledContent("The planner runs", value: localityLine(settings.planner))
-                Toggle("Share screenshots with an executor on the internet", isOn: $settings.screenshotsAllowedToRemote)
-                    .accessibilityIdentifier("assistant.remoteScreenshots")
-                Stepper("Steps per instruction: \(settings.maximumSteps)", value: $settings.maximumSteps, in: 1...60)
-                Stepper("Steps per sub-task before re-planning: \(settings.stepsPerSubtask)", value: $settings.stepsPerSubtask, in: 2...20)
-            } header: {
-                Text("Privacy and limits")
-            } footer: {
-                Text("The screen is read on this Mac: accessibility controls and on-device text recognition, with secure fields and anything that looks like a secret left out. An executor on this Mac or on your network may also get a downscaled screenshot. On the internet it gets text only unless you switch screenshots on here and allow them on the phone for a run. The planner never gets pixels.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-
-            if settings.planner.kind == .ollama || settings.executor.kind == .ollama {
-                Section("Ollama memory") {
-                    LabeledContent("Loaded now", value: loadedOllamaModels.isEmpty ? "nothing" : loadedOllamaModels.joined(separator: ", "))
-                    HStack {
-                        Button("Refresh") { refreshLoaded() }
-                        Button("Unload all") { unloadAll() }
-                            .disabled(loadedOllamaModels.isEmpty)
-                    }
-                    Text("Models load when a run starts and are unloaded when it ends.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-            }
-        }
-        .formStyle(.grouped)
-        .onAppear(perform: refreshLoaded)
     }
 
     private var builtInModels: some View {
@@ -167,6 +175,89 @@ struct AssistantSettingsView: View {
             for provider in providers { await provider.release(models: names) }
             refreshLoaded()
         }
+    }
+}
+
+/// Lite, Standard or Custom: picking Lite or Standard switches to its models and downloads
+/// the ones Ollama does not have yet.
+private struct ProfileSection: View {
+    @Bindable var settings: AssistantSettings
+    private var downloads: AssistantProfileDownloads { AssistantProfileDownloads.shared }
+    private let memory = AssistantProfile.memoryGigabytes
+
+    var body: some View {
+        Section {
+            Picker("Profile", selection: Binding(get: { settings.profile }, set: { choose($0) })) {
+                ForEach(AssistantProfile.allCases) { profile in
+                    Text(profile == AssistantProfile.recommended(memoryGigabytes: memory) ? "\(profile.title) (recommended)" : profile.title)
+                        .tag(profile)
+                }
+            }
+            .pickerStyle(.segmented)
+            .accessibilityIdentifier("assistant.profile")
+            Text(settings.profile.summary)
+                .font(.callout)
+            if settings.profile != .custom {
+                if !settings.profile.fits(memoryGigabytes: memory) {
+                    Label("This Mac has \(memory) GB of memory; \(settings.profile.title) needs \(settings.profile.minimumMemoryGigabytes ?? 0) GB. Choose Lite.",
+                          systemImage: "exclamationmark.triangle")
+                        .font(.caption)
+                        .foregroundStyle(.orange)
+                }
+                LabeledContent("Navigates with", value: settings.executor.kind == .appleOnDevice
+                               ? "Apple on-device, with \(AssistantProfile.navigationModel) as eyes"
+                               : AssistantProfile.navigationModel)
+                LabeledContent("Plans and reads answers with", value: settings.planner.resolvedModel)
+                ForEach(settings.profile.models, id: \.self) { model in
+                    modelRow(model)
+                }
+                if downloads.ollamaRunning == false {
+                    Label("Lite and Standard run their models in Ollama. Install it, open it, then choose the profile again.", systemImage: "arrow.down.circle")
+                        .font(.caption)
+                    Button("Get Ollama") {
+                        if let url = URL(string: "https://ollama.com/download") { NSWorkspace.shared.open(url) }
+                    }
+                    .controlSize(.small)
+                }
+                if let error = downloads.lastError {
+                    Text(error).font(.caption).foregroundStyle(.red).textSelection(.enabled)
+                }
+            }
+        } header: {
+            Text("Models")
+        } footer: {
+            Text("This Mac has \(memory) GB of memory. Lite needs 16 GB, Standard 32 GB. Both navigate with the same small, fast models; Standard plans and reads answers with a bigger one. Models download only when you choose a profile.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+        .task { await downloads.refresh() }
+    }
+
+    @ViewBuilder
+    private func modelRow(_ model: String) -> some View {
+        HStack {
+            Text(model)
+            Spacer()
+            if let fraction = downloads.progress[model] {
+                ProgressView(value: fraction).frame(width: 110)
+                Text("\(Int(fraction * 100))%").font(.caption.monospacedDigit()).frame(width: 36, alignment: .trailing)
+            } else if downloads.isInstalled(model) {
+                Label("Downloaded", systemImage: "checkmark.circle").font(.caption).foregroundStyle(.green)
+            } else {
+                Button("Download") { Task { await downloads.download([model]) } }
+                    .controlSize(.small)
+                    .disabled(downloads.ollamaRunning != true)
+            }
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("assistant.profile.model.\(model)")
+    }
+
+    private func choose(_ profile: AssistantProfile) {
+        settings.use(profile)
+        let models = profile.models
+        guard !models.isEmpty else { return }
+        Task { await downloads.download(models) }
     }
 }
 
