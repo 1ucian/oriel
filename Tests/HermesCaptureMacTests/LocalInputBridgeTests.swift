@@ -41,7 +41,7 @@ struct LocalInputBridgeTests {
         var goalActive: Bool
         var bridge: LocalInputBridge!
 
-        init(frontmost: String? = "Citrix Viewer", orielAt: Bool = false, goalActive: Bool = false,
+        init(frontmost: String? = "TextEdit", orielAt: Bool = false, goalActive: Bool = false,
              slow: Duration? = nil, idleHide: Duration = .milliseconds(1_500)) {
             directory = FileManager.default.temporaryDirectory.appendingPathComponent("oriel-input-bridge-\(UUID().uuidString)", isDirectory: true)
             recorder = Recorder(slow: slow)
@@ -88,8 +88,8 @@ struct LocalInputBridgeTests {
     // MARK: Parsing
 
     @Test func requestsAreValidated() throws {
-        let click = try LocalInputRequest.parse(Data(#"{"id":"r1","action":"click","app":"Citrix Viewer","x":12,"y":34}"#.utf8))
-        #expect(click.action == .click && click.app == "Citrix Viewer" && click.x == 12 && click.y == 34)
+        let click = try LocalInputRequest.parse(Data(#"{"id":"r1","action":"click","app":"TextEdit","x":12,"y":34}"#.utf8))
+        #expect(click.action == .click && click.app == "TextEdit" && click.x == 12 && click.y == 34)
 
         func invalid(_ json: String) -> LocalInputRequest.Invalid? {
             do { _ = try LocalInputRequest.parse(Data(json.utf8)); return nil } catch { return error as? LocalInputRequest.Invalid }
@@ -132,9 +132,9 @@ struct LocalInputBridgeTests {
     @Test func aRequestForAnAppThatIsNotFrontmostIsRefusedWithNothingSent() async throws {
         let fixture = Fixture(frontmost: "Finder")
         try fixture.bridge.start()
-        try fixture.write(#"{"id":"wrong-app","action":"click","app":"Citrix Viewer","x":500,"y":250}"#)
+        try fixture.write(#"{"id":"wrong-app","action":"click","app":"TextEdit","x":500,"y":250}"#)
         let reported = try await result(fixture, id: "wrong-app")
-        #expect(reported.status == .refused && reported.why == "Citrix Viewer is not in front (Finder is), so nothing was sent.")
+        #expect(reported.status == .refused && reported.why == "TextEdit is not in front (Finder is), so nothing was sent.")
         #expect(fixture.recorder.events.isEmpty && fixture.recorder.beginCount == 0)
         await fixture.cleanup()
     }
@@ -142,7 +142,7 @@ struct LocalInputBridgeTests {
     @Test func inputIntoOrielsOwnWindowsIsRefused() async throws {
         let fixture = Fixture(orielAt: true)
         try fixture.bridge.start()
-        try fixture.write(#"{"id":"oriel","action":"click","app":"Citrix Viewer","x":500,"y":250}"#)
+        try fixture.write(#"{"id":"oriel","action":"click","app":"TextEdit","x":500,"y":250}"#)
         let reported = try await result(fixture, id: "oriel")
         #expect(reported.status == .refused && reported.why?.contains("its own windows") == true)
         #expect(fixture.recorder.events.isEmpty)
@@ -152,7 +152,7 @@ struct LocalInputBridgeTests {
     @Test func aPointOffTheDisplayIsRefused() async throws {
         let fixture = Fixture()
         try fixture.bridge.start()
-        try fixture.write(#"{"id":"far","action":"click","app":"Citrix Viewer","x":5000,"y":250}"#)
+        try fixture.write(#"{"id":"far","action":"click","app":"TextEdit","x":5000,"y":250}"#)
         let reported = try await result(fixture, id: "far")
         #expect(reported.status == .refused && reported.why?.contains("off the display") == true)
         #expect(fixture.recorder.events.isEmpty)
@@ -164,7 +164,7 @@ struct LocalInputBridgeTests {
     @Test func aClickGoesToTheBrokerAtTheRightPoint() async throws {
         let fixture = Fixture()
         try fixture.bridge.start()
-        try fixture.write(#"{"id":"c1","action":"click","app":"Citrix Viewer","x":500,"y":250}"#)
+        try fixture.write(#"{"id":"c1","action":"click","app":"TextEdit","x":500,"y":250}"#)
         let reported = try await result(fixture, id: "c1")
         #expect(reported.status == .done && reported.ms >= 0)
         #expect(fixture.recorder.beginCount == 1)
@@ -182,7 +182,7 @@ struct LocalInputBridgeTests {
     @Test func typingSendsKeyStrokesNotUnicodeForAsciiAndReturnForNewline() async throws {
         let fixture = Fixture()
         try fixture.bridge.start()
-        try fixture.write(#"{"id":"t1","action":"type","app":"Citrix Viewer","text":"Hi!\n"}"#)
+        try fixture.write(#"{"id":"t1","action":"type","app":"TextEdit","text":"Hi!\n"}"#)
         let reported = try await result(fixture, id: "t1")
         #expect(reported.status == .done)
         let events = fixture.recorder.events
@@ -198,7 +198,7 @@ struct LocalInputBridgeTests {
     @Test func aScrollMovesToThePointAndScrollsDownForPositiveLines() async throws {
         let fixture = Fixture()
         try fixture.bridge.start()
-        try fixture.write(#"{"id":"s1","action":"scroll","app":"Citrix Viewer","x":500,"y":500,"lines":3}"#)
+        try fixture.write(#"{"id":"s1","action":"scroll","app":"TextEdit","x":500,"y":500,"lines":3}"#)
         let reported = try await result(fixture, id: "s1")
         #expect(reported.status == .done)
         let events = fixture.recorder.events
@@ -214,7 +214,7 @@ struct LocalInputBridgeTests {
     @Test func aScrollWithColumnsScrollsRightWithNoVerticalMovement() async throws {
         let fixture = Fixture()
         try fixture.bridge.start()
-        try fixture.write(#"{"id":"s2","action":"scroll","app":"Citrix Viewer","x":500,"y":500,"lines":0,"columns":2}"#)
+        try fixture.write(#"{"id":"s2","action":"scroll","app":"TextEdit","x":500,"y":500,"lines":0,"columns":2}"#)
         let reported = try await result(fixture, id: "s2")
         #expect(reported.status == .done)
         if case let .scrollDelta(x, y) = fixture.recorder.events.last {
@@ -228,7 +228,7 @@ struct LocalInputBridgeTests {
     @Test func aKeyChordGoesToTheBroker() async throws {
         let fixture = Fixture()
         try fixture.bridge.start()
-        try fixture.write(#"{"id":"k1","action":"key","app":"Citrix Viewer","chord":"cmd+f"}"#)
+        try fixture.write(#"{"id":"k1","action":"key","app":"TextEdit","chord":"cmd+f"}"#)
         let reported = try await result(fixture, id: "k1")
         #expect(reported.status == .done)
         #expect(fixture.recorder.events == [.key(code: 3, phase: .press, modifiers: [.command])])
@@ -240,7 +240,7 @@ struct LocalInputBridgeTests {
     @Test func aRequestWhileAGoalRunsIsBusy() async throws {
         let fixture = Fixture(goalActive: true)
         try fixture.bridge.start()
-        try fixture.write(#"{"id":"during-goal","action":"click","app":"Citrix Viewer","x":500,"y":250}"#)
+        try fixture.write(#"{"id":"during-goal","action":"click","app":"TextEdit","x":500,"y":250}"#)
         let reported = try await result(fixture, id: "during-goal")
         #expect(reported.status == .busy && reported.why == "A goal run is in progress.")
         #expect(fixture.recorder.events.isEmpty)
@@ -250,10 +250,10 @@ struct LocalInputBridgeTests {
     @Test func aSecondRequestWhileOneRunsIsBusy() async throws {
         let fixture = Fixture(slow: .milliseconds(400))
         try fixture.bridge.start()
-        try fixture.write(#"{"id":"first","action":"click","app":"Citrix Viewer","x":500,"y":250}"#)
+        try fixture.write(#"{"id":"first","action":"click","app":"TextEdit","x":500,"y":250}"#)
         for _ in 0..<200 where !fixture.bridge.isRunning { try await Task.sleep(for: .milliseconds(5)) }
         #expect(fixture.bridge.isRunning)
-        try fixture.write(#"{"id":"second","action":"click","app":"Citrix Viewer","x":100,"y":100}"#)
+        try fixture.write(#"{"id":"second","action":"click","app":"TextEdit","x":100,"y":100}"#)
         let busy = try await result(fixture, id: "second")
         #expect(busy.status == .busy && busy.why == "Another local input request is in progress.")
         await fixture.cleanup()
@@ -280,7 +280,7 @@ struct LocalInputBridgeTests {
     @Test func thePointerIsHiddenAfterTheIdleTimer() async throws {
         let fixture = Fixture(idleHide: .milliseconds(80))
         try fixture.bridge.start()
-        try fixture.write(#"{"id":"hide","action":"click","app":"Citrix Viewer","x":500,"y":250}"#)
+        try fixture.write(#"{"id":"hide","action":"click","app":"TextEdit","x":500,"y":250}"#)
         let reported = try await result(fixture, id: "hide")
         #expect(reported.status == .done)
         #expect(fixture.recorder.hideCount == 0, "Still visible right after the action")
@@ -291,7 +291,7 @@ struct LocalInputBridgeTests {
 
     @Test func aRequestLeftFromBeforeTheBridgeStartedDoesNotRun() async throws {
         let fixture = Fixture()
-        try fixture.write(#"{"id":"stale","action":"click","app":"Citrix Viewer","x":500,"y":250}"#)
+        try fixture.write(#"{"id":"stale","action":"click","app":"TextEdit","x":500,"y":250}"#)
         try fixture.bridge.start()
         try await Task.sleep(for: .milliseconds(150))
         #expect(!FileManager.default.fileExists(atPath: fixture.url("input-result.json").path))

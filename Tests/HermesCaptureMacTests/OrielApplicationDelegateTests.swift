@@ -116,8 +116,8 @@ struct OrielApplicationDelegateTests {
         #expect(!delegate.captureRunning)
     }
 
-    /// Lucian 10-07: a Screen Recording prompt from a start at login sat behind other windows and
-    /// kept resurfacing. A background start never asks; capture starts once access is there.
+    /// A Screen Recording prompt from a start at login sits behind other windows and keeps
+    /// resurfacing. A background start never asks; capture starts once access is there.
     @Test func backgroundStartNeverAsksAndStartsCaptureOnceAccessArrives() async throws {
         let events = LifecycleEvents()
         let captureBridge = FakeApplicationCaptureBridge(events: events)

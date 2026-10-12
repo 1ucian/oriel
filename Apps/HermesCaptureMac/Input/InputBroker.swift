@@ -15,8 +15,16 @@ actor InputBroker {
     /// Oriel's own pointer position: remote moves land here, not on the system pointer.
     private var virtualPosition: CGPoint?
     /// A button held through a drag, with the system pointer borrowed until it is released.
-    private var heldButton: (button: CGMouseButton, dragType: CGEventType, upType: CGEventType)?
+    private var heldButton: (button: CGMouseButton, dragType: CGEventType, upType: CGEventType, start: CGPoint)?
     private var restoreAfterDrag: CGPoint?
+    /// How many times Stop Control cut input off: a text being typed stops when this changes.
+    private var stops = 0
+
+    /// What a text being typed checks between two characters.
+    struct TypingTicket: Equatable {
+        let deviceID: String?
+        let stops: Int
+    }
 
     func register(_ request: SessionApprovalRequest) {
         sessionPolicy.register(request)
@@ -34,19 +42,50 @@ actor InputBroker {
         )
     }
 
-    func stopControl() {
+    /// Every session's input approval ends. Text being typed stops at the next character, and a
+    /// button held mid-drag goes back to where the drag began and is let go there. With
+    /// `keepingRunInput` (the same phone is back while its run goes on) only the approvals end:
+    /// what the run is typing or dragging carries on under the phone's new session.
+    func stopControl(keepingRunInput: Bool = false) {
         sessionPolicy.stopControl()
+        if keepingRunInput {
+            heldButton = nil
+            restoreAfterDrag = nil
+        } else {
+            stops &+= 1
+            releaseHeldButton()
+        }
         virtualPosition = nil
-        heldButton = nil
-        restoreAfterDrag = nil
     }
 
     func resumeAcceptingNewSessions() {
         sessionPolicy.resumeAcceptingNewSessions()
     }
 
+    /// The device's sessions lose their approval now, and it registers no new ones until the
+    /// owner approves it again (`readmit`).
     func revoke(deviceID: String) {
+        let hadSession = sessionPolicy.activeSessions.contains { $0.request.deviceID == deviceID }
         sessionPolicy.revoke(deviceID: deviceID)
+        if hadSession { releaseHeldButton() }
+    }
+
+    func readmit(deviceID: String) {
+        sessionPolicy.readmit(deviceID: deviceID)
+    }
+
+    func typingTicket(sessionID: String) -> TypingTicket {
+        TypingTicket(deviceID: sessionPolicy.approvedSession(id: sessionID)?.request.deviceID, stops: stops)
+    }
+
+    /// Why a text being typed must stop before its next character: Stop Control, or a revoke of
+    /// the device typing it. Nil while it may go on.
+    func typingStopReason(_ ticket: TypingTicket) -> SessionPolicyError? {
+        if ticket.stops != stops { return .killSwitchActive }
+        if let deviceID = ticket.deviceID, sessionPolicy.revokedDeviceIDs.contains(deviceID) {
+            return .deviceRevoked
+        }
+        return nil
     }
 
     func execute(
@@ -105,7 +144,7 @@ actor InputBroker {
                 modifiers: modifiers
             )
         case let .textInput(text):
-            try await postText(text)
+            try await postText(text, sessionID: sessionID)
         }
     }
 
@@ -121,6 +160,19 @@ actor InputBroker {
             x: bounds.minX + bounds.width * point.x,
             y: bounds.minY + bounds.height * point.y
         )
+    }
+
+    /// A button held down mid-drag by input that just ended goes back to where the drag began and
+    /// is let go there, so the drag drops nowhere new and no button stays down that nobody holds.
+    private func releaseHeldButton() {
+        defer {
+            heldButton = nil
+            restoreAfterDrag = nil
+        }
+        guard let held = heldButton else { return }
+        try? postMouseEvent(type: held.dragType, button: held.button, position: held.start)
+        try? postMouseEvent(type: held.upType, button: held.button, position: held.start)
+        if let back = restoreAfterDrag { restorePointer(to: back, from: held.start) }
     }
 
     /// Put the system pointer back where the owner had it, unless the two already coincide.
@@ -166,7 +218,7 @@ actor InputBroker {
             restoreAfterDrag = prior
             try postMouseEvent(type: .mouseMoved, button: cgButton, position: location)
             try postMouseEvent(type: downType, button: cgButton, position: location)
-            heldButton = (cgButton, dragType, upType)
+            heldButton = (cgButton, dragType, upType, location)
         case .up:
             try postMouseEvent(type: upType, button: cgButton, position: location)
             heldButton = nil
@@ -308,8 +360,11 @@ actor InputBroker {
     /// One key down and one key up per character, the character set on both. A lone key down
     /// carrying the whole string reached Slack's message box but not its jump box (Chromium
     /// text inputs ignore it), so typing a name there opened whatever was listed first.
-    private func postText(_ text: String) async throws {
+    private func postText(_ text: String, sessionID: String) async throws {
+        let ticket = typingTicket(sessionID: sessionID)
         for character in text {
+            // Stop Control or a revoke ends typing between two characters, not after the text.
+            if let reason = typingStopReason(ticket) { throw reason }
             let units = Array(String(character).utf16)
             for isDown in [true, false] {
                 guard let event = CGEvent(

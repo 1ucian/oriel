@@ -1,0 +1,37 @@
+{
+  "about": "Written by the Windows tests (WireVectorTests.cs) from the inputs in wire-v1.json; verified by WireVectorTests.swift.",
+  "qr": "T1JMAQABQdqyt-QAAAAgWGmv9FBUlzLLqu1eXfmzCm2jHLDldCutWtShp2jxpnsYoKGio6SlpqeoqaqrrK2ur7CxsrO0tba3CkV4YW1wbGUtUEMAQNm3r5h5zId5nTsPr-caVt6-cSCa4Aw4gprJRp-bJBO1JwPRMfdKKMsSp2HzmBPMd2NwV6PN8fc-L_lhBAK9YAMgebVWLo_mVPlAeLES6KmLp5AfhTrmlb7X4OORC60ElmQ",
+  "challengeFramed": "AAABkHsicGF5bG9hZCI6eyJleHBpcmVzQXQiOjE3OTE2NzY4OTAwMDAsImlzc3VlZEF0IjoxNzkxNjc2ODYwMDAwLCJtYWNLZXlBZ3JlZW1lbnRQdWJsaWNLZXkiOiJXR212OUZCVWx6TExxdTFlWGZtekNtMmpITERsZEN1dFd0U2hwMmp4cG5zPSIsIm1hY1NpZ25pbmdQdWJsaWNLZXkiOiJlYlZXTG8vbVZQbEFlTEVTNkttTHA1QWZoVHJtbGI3WDRPT1JDNjBFbG1RPSIsIm5vbmNlIjoid01IQ3c4VEZ4c2ZJeWNyTHpNM096OURSMHRQVTFkYlgiLCJwcm90b2NvbFZlcnNpb24iOjEsInNlcnZpY2VOYW1lIjoiRXhhbXBsZS1QQyJ9LCJzaWduYXR1cmUiOiJnSjdsczRmYzFiMkhQOGZxTThla1gyOHQ1ajFrQkRpMlVhQU9XQmszckd2TFlNTFFRWGNialRTWmtEbjR0Z0NjQzc2bWt0WTJoVkRlVWxPczdkOEtEZz09In0=",
+  "macFrames": [
+    {
+      "name": "approval",
+      "counter": 1,
+      "frame": "AAAAmAEAAAAAAAAAN4hlJiatgeM2aK3Ru332rEyrKifQT9crM86VG5aJHFA\u002BW2PJrGugQodjBURi9CoUAEpy9GHBtsHBx8JH0uVF/KHIooPRv4gwE9/tJsLNoZc5qjRGEse19\u002BUpdxP9oAyluK4oCpr60yjzSu40/A0sUSFJZAnE15N78bVnmZrQqNezqqAtV9wg3YH462DgfdV6"
+    },
+    {
+      "name": "heartbeat",
+      "counter": 2,
+      "frame": "AAAAXAIAAAAAAAAASXTWXT3YLS/byD1i9uBOTOG48caOVaUjz6vVJ6/nfiDyANB71vYFq1HlRfrfPsEkr5ME6VWL88RCnOCdgbytaZReQY/pOKX4uh6KIt1eaLB6qvfv"
+    },
+    {
+      "name": "video-key",
+      "counter": 3,
+      "frame": "AAAA/AMAAAAAAAAA3pDJUE84Et222ZX188eMY3BkoeD8Z36VPHM5WI65G3YU2AyICGsn\u002BIFG4Lrb0/O3i7LKm2Rr9zPjuNDZRsQAhdyRkO4Sj0MCCo9ZCDscP3TnGKGhOokxv3/4975Mvet6WcHaoTkZbWyAT48CS\u002BUGANBeXNVFe4rT/9GkFU4RMJ56HsAwCIh/lZrJb75bfae4lMOlBm5f6uA7mgSOFqpAM1M/XmxEmvawpcNLwYb5gWEyYAG4ZCij9oDu8cuqZPAL2YZIoXIRLy6FikBfTbJrrM9AGfJVe8LqdsmIFzb9mJOi8ZzuOjs8iAzpGNfBy2WuNsBmiw=="
+    },
+    {
+      "name": "video-delta",
+      "counter": 4,
+      "frame": "AAAAoAQAAAAAAAAA1SET7JNPzf9h5v/xA/jUww\u002BTjI3S5pMtI3kb7R/FEag35Rebbu4o9sziJFwIkeR2yiGLiiDydqBf4VZbL/dFXQhXP9CtlGjXhLsYPGa3bGB\u002BpN3P/mqg6odra4E1MaEZU51j8XpA90uQm7JzTNxEyr4LeaFrdIqXAX7VVeoSyCjAcyj4uWZ0Ys\u002B1vVNLzf61/ppB/U/YYNg="
+    },
+    {
+      "name": "close",
+      "counter": 5,
+      "frame": "AAAATgUAAAAAAAAA/kJ96t8Nsq/S4UIrn2DNfy9QyHbANyXVCQcQQN/XdkclLGvIikI/yQzH8NSR4\u002B8BcQ/ZGvjqBe3diZj8sz\u002BNc21XnrhNIA=="
+    },
+    {
+      "name": "close-escapes",
+      "counter": 6,
+      "frame": "AAAAYQYAAAAAAAAAS0pFnr3jQx9DQJQdVLuZwGHOR2fUClEt7PUmzIyGLZF50N656CKgztl1KvErfN4kHsSsnI0/MerfOHV4Bptlv3QeqWzqvF9bF9ZWGQUf\u002B\u002BS/XNt0jZq\u002ByEw="
+    }
+  ]
+}

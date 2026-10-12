@@ -1,6 +1,6 @@
-# Legacy LCU Frame Compatibility
+# Local Bridge Compatibility
 
-Oriel's native Mac app replaces the Python `hermescap.py` stream helper while preserving the existing LCU filesystem contract. The native bridge starts once with the app, owns the cache through an atomic PID claim, and holds one ScreenCaptureKit stream under Oriel's stable bundle identity.
+Oriel's Mac app can serve a local automation tool on the same Mac through a folder-based contract (frames, goals and input), kept compatible with the tool that used it before. The native bridge starts once with the app, owns the cache through an atomic PID claim, and holds one ScreenCaptureKit stream under Oriel's stable bundle identity.
 
 The bridges in this document are compiled only into builds made with the `ORIEL_LOCAL_BRIDGES` Swift compilation condition: Debug builds, or a Release build made with `SWIFT_ACTIVE_COMPILATION_CONDITIONS=ORIEL_LOCAL_BRIDGES`. The notarized download leaves them out, so the preferences below do nothing there, and the Developer ID release script refuses a build that has them: any process running as the user can write a preference.
 
@@ -45,12 +45,12 @@ Pixels are synchronized before the sequence-bearing header is published. Consume
 
 ## Resource and lifecycle rules
 
-- Raw pixel writes are disabled unless a live LCU consumer refreshes `raw`.
+- Raw pixel writes are disabled unless a live consumer refreshes `raw`.
 - PNG encoding happens only after `req` changes.
 - Oriel performs no automatic capture retry loop after a TCC denial, preventing stacked permission prompts.
 - Partial startup stops any opened stream and releases only Oriel's own PID claim.
 - Normal app termination waits for bridge shutdown before allowing AppKit to exit.
-- The Python LaunchAgent must remain loaded until the installed Oriel build has produced a valid HRC1 frame and a fresh `latest.png` through the live LCU reader. It can then be disabled, not deleted, for rollback.
+- The previous capture helper must remain loaded until the installed Oriel build has produced a valid HRC1 frame and a fresh `latest.png` through the automation tool's live reader. It can then be disabled, not deleted, for rollback.
 
 ## Local goal bridge
 
@@ -70,7 +70,7 @@ defaults write com.67enterprise.oriel.mac localAssistantBridge.enabled -bool tru
 
 - `goal.json` holds `{"id": string, "instruction": string, "app": string?, "maxSteps": 1-30, "typeAllowed": [string]?, "readOnly": bool?}`.
   - `maxSteps` is required.
-  - `app` is the app the run is confined to, for example `"Citrix Viewer"`.
+  - `app` is the app the run is confined to, for example `"TextEdit"`.
   - `typeAllowed` lists the exact texts the run may type.
   - `readOnly` (default false) makes the run observe and answer only: any click, typing, key, scroll or app switch ends it as `blocked` with `why` = `read-only run`, and the planner is told to answer from what is on screen now.
 - Oriel checks for a goal every 50 ms. A goal with an id it has not run before starts a run, unless a run is already in progress, from this bridge or from the phone. In that case the result for the new goal is `busy`; write the goal again with a new id later.
@@ -121,7 +121,7 @@ The same local tool can also drive the Mac one input primitive at a time, throug
   - `text` is for `type`.
   - `lines` and `columns` are for `scroll`: positive `lines` scrolls down, positive `columns` scrolls the content right (later columns into view, for lists that run off-screen sideways). At least one is required; either may be `0`. Oriel sends `16` px of wheel per line or column.
 - Oriel checks every 50 ms and runs one request at a time.
-- `type` sends one key down and up per character with real virtual key codes and Shift for capitals and symbols (a Citrix lookup field ignores unicode-string key events); a character with no key code goes as a unicode event, and `\n` types Return. There are 12 ms between characters.
+- `type` sends one key down and up per character with real virtual key codes and Shift for capitals and symbols (some remote-desktop fields ignore unicode-string key events); a character with no key code goes as a unicode event, and `\n` types Return. There are 12 ms between characters.
 - The pointer shows on every move and stays visible until 1.5 s after the last action, so it is seen through a chain.
 - `input-result.json` is `{"id", "status": "done"|"refused"|"failed"|"busy", "why"?, "ms"}`. `id` is null when `input.json` could not be read.
 - One line per request is written to the activity log, with the action and status, never the typed text.
@@ -164,4 +164,4 @@ The same local tool can also drive the Mac one input primitive at a time, throug
 - `input-result.json` replaced rather than rewritten in place;
 - the pointer hidden after the idle timer.
 
-Release rollout additionally requires a real installed-app TCC grant, a live LCU screenshot reporting `engine=hermescapture`, a raw-frame read with advancing sequence, and confirmation that Python is no longer running.
+Release rollout additionally requires a real installed-app TCC grant, a live screenshot from the automation tool reporting `engine=hermescapture`, a raw-frame read with advancing sequence, and confirmation that the previous helper is no longer running.

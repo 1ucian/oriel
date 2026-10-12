@@ -116,6 +116,12 @@ public struct RemoteSessionPolicy: Sendable {
         approvedSessions = approvedSessions.filter { $0.value.request.deviceID != deviceID }
     }
 
+    /// The owner approved a revoked device again, after a new pairing: its new sessions may
+    /// register. The sessions revoked with it stay revoked.
+    public mutating func readmit(deviceID: String) {
+        revokedDeviceIDs.remove(deviceID)
+    }
+
     public func approvedSession(id: String) -> ApprovedRemoteSession? {
         approvedSessions[id]
     }

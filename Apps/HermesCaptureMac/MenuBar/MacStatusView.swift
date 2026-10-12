@@ -21,6 +21,15 @@ struct MacStatusView: View {
             if pairing.isControlling, pairing.activeCapabilities.contains(.runAgentActions) {
                 assistantCard
             }
+            if !pairing.pairedDevices.isEmpty || pairing.pairedDevicesError != nil {
+                PairedDevicesSection(
+                    devices: pairing.pairedDevices,
+                    connectedSigningPublicKey: pairing.activePeerSigningPublicKey,
+                    errorMessage: pairing.pairedDevicesError
+                ) { device in
+                    pairing.revokePeer(signingPublicKey: device.signingPublicKey)
+                }
+            }
             displaySection
             if let error = pairing.errorDescription {
                 VStack(alignment: .leading, spacing: 8) {
@@ -42,6 +51,9 @@ struct MacStatusView: View {
         }
         .padding(14)
         .frame(width: 390)
+        .onAppear {
+            pairing.refreshPairedDevices()
+        }
     }
 
     // MARK: Header
@@ -81,6 +93,14 @@ struct MacStatusView: View {
                 Text("Asks to: " + MacHostPresentation.capabilitySummary(pending.requestedCapabilities).lowercased())
                     .font(.caption)
                     .foregroundStyle(.secondary)
+                if let code = pending.confirmationCode {
+                    // Phones on the first release show no code, and the Mac cannot tell which one asks.
+                    Text("If your phone shows a code, it should be \(Text(code.formatted).font(.title3.monospacedDigit().weight(.semibold))).")
+                        .font(.callout)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .accessibilityLabel("If your phone shows a code, it should be \(code.spokenDigits).")
+                        .accessibilityIdentifier("pairing.confirmationCode")
+                }
                 HStack {
                     Button("Decline", role: .cancel) {
                         pairing.decline()
@@ -90,7 +110,7 @@ struct MacStatusView: View {
                     Button(pairing.isApprovalInFlight ? "Allowing…" : "Allow Control") {
                         pairing.approve()
                     }
-                    .buttonStyle(.borderedProminent)
+                    .prominentButton()
                     .disabled(pairing.isApprovalInFlight)
                 }
             }
@@ -155,7 +175,7 @@ struct MacStatusView: View {
                 } label: {
                     Label("Pair iPhone or iPad", systemImage: "qrcode")
                 }
-                .buttonStyle(.borderedProminent)
+                .prominentButton()
                 .disabled(pairing.isPairing)
                 .accessibilityIdentifier("pairing.start")
             }
@@ -324,7 +344,8 @@ struct MacStatusView: View {
                 pairing.stopControl()
             }
             .keyboardShortcut(".", modifiers: [.command, .option])
-            .disabled(!pairing.isControlling)
+            // A run that went on without its phone is stopped here too.
+            .disabled(!pairing.isControlling && !assistant.isActive)
             Spacer()
             SettingsLink {
                 Text("Settings…")
@@ -399,6 +420,36 @@ struct MacStatusView: View {
             return "Pairing stopped. Review the error, then try again."
         }
         return "No iPhone connected"
+    }
+}
+
+extension View {
+    /// A window's main action: prominent while its window is key. In any other window macOS draws
+    /// a prominent button without its fill but keeps its white label, which vanishes on a light
+    /// background, so there it is a bordered button, with a red label when it is destructive.
+    func prominentButton(destructive: Bool = false) -> some View {
+        modifier(ProminentButton(destructive: destructive))
+    }
+}
+
+private struct ProminentButton: ViewModifier {
+    let destructive: Bool
+    @Environment(\.controlActiveState) private var activeState
+
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        if activeState == .key {
+            content
+                .buttonStyle(.borderedProminent)
+                .tint(destructive ? .red : nil)
+        } else if destructive {
+            content
+                .buttonStyle(.bordered)
+                .foregroundStyle(.red)
+        } else {
+            content
+                .buttonStyle(.bordered)
+        }
     }
 }
 

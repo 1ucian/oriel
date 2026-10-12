@@ -58,7 +58,7 @@ actor MacRemoteSessionController {
         if resumingRun {
             detachedRun?.limit.cancel()
             detachedRun = nil
-            await inputBroker.stopControl()
+            await inputBroker.stopControl(keepingRunInput: true)
             ActivityLog.shared.write(.assistant, "The phone is back; the run goes on with it")
         } else {
             await stop(closeReason: "replaced-on-mac")
@@ -272,7 +272,7 @@ actor MacRemoteSessionController {
             ActivityLog.shared.write(.assistant, "Instruction refused: no model is configured on the Mac")
             if let event = try? AgentTraceEvent(
                 instructionID: instruction.id, stepIndex: 0, kind: .failed,
-                summary: "No model is configured on the Mac. Open Oriel on the Mac, Permissions & Diagnostics, Assistant.",
+                summary: "No model is configured on the Mac. On the Mac, open Oriel's Settings, Assistant tab.",
                 monotonicNanoseconds: DispatchTime.now().uptimeNanoseconds
             ) {
                 try? channel.send(.agentTrace(event))
@@ -323,6 +323,20 @@ actor MacRemoteSessionController {
         for event in runTrace { try? channel.send(.agentTrace(event)) }
         runTraceMissed = false
         ActivityLog.shared.write(.assistant, "Sent the phone the \(runTrace.count) trace lines of the run it missed")
+    }
+
+    /// The owner revoked a phone on the Mac: its input stops now, and its session and any run
+    /// it left going end. Another phone's session is left alone.
+    func revoke(deviceID: String) async {
+        await inputBroker.revoke(deviceID: deviceID)
+        guard self.deviceID == deviceID else { return }
+        await stopDetachedRun(why: "the phone was revoked on the Mac")
+        await stop(closeReason: "revoked-on-mac")
+    }
+
+    /// The owner approved a phone on the Mac: a revoke earlier in this run no longer keeps it out.
+    func readmit(deviceID: String) async {
+        await inputBroker.readmit(deviceID: deviceID)
     }
 
     /// Ends a run that went on without its phone (the time limit, the phone removed on the Mac).

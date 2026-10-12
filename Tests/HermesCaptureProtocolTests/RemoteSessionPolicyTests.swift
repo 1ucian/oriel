@@ -31,6 +31,39 @@ struct RemoteSessionPolicyTests {
         }
     }
 
+    @Test func revokedDeviceStaysOutUntilTheOwnerApprovesItAgain() throws {
+        var policy = RemoteSessionPolicy()
+        let point = try NormalizedPoint(x: 0.5, y: 0.5)
+        policy.register(SessionApprovalRequest(sessionID: "s1", deviceID: "d1", deviceName: "Phone", requestedCapabilities: [.controlPointer], expiresAtNanoseconds: 5_000))
+        try policy.approve(sessionID: "s1", capabilities: [.controlPointer], nowNanoseconds: 1_000)
+        policy.register(SessionApprovalRequest(sessionID: "o1", deviceID: "d2", deviceName: "Other", requestedCapabilities: [.controlPointer], expiresAtNanoseconds: 5_000))
+        try policy.approve(sessionID: "o1", capabilities: [.controlPointer], nowNanoseconds: 1_000)
+
+        policy.revoke(deviceID: "d1")
+        #expect(throws: SessionPolicyError.deviceRevoked) {
+            try policy.authorize(.pointerMove(point), sessionID: "s1", nowNanoseconds: 1_100)
+        }
+        // Another device's session goes on.
+        #expect(throws: Never.self) {
+            try policy.authorize(.pointerMove(point), sessionID: "o1", nowNanoseconds: 1_100)
+        }
+        // A new session from the revoked device is not even registered.
+        policy.register(SessionApprovalRequest(sessionID: "s2", deviceID: "d1", deviceName: "Phone", requestedCapabilities: [.controlPointer], expiresAtNanoseconds: 5_000))
+        #expect(throws: SessionPolicyError.unknownSession) {
+            try policy.approve(sessionID: "s2", capabilities: [.controlPointer], nowNanoseconds: 1_200)
+        }
+
+        policy.readmit(deviceID: "d1")
+        #expect(throws: SessionPolicyError.deviceRevoked) {
+            try policy.approve(sessionID: "s1", capabilities: [.controlPointer], nowNanoseconds: 1_300)
+        }
+        policy.register(SessionApprovalRequest(sessionID: "s3", deviceID: "d1", deviceName: "Phone", requestedCapabilities: [.controlPointer], expiresAtNanoseconds: 5_000))
+        try policy.approve(sessionID: "s3", capabilities: [.controlPointer], nowNanoseconds: 1_300)
+        #expect(throws: Never.self) {
+            try policy.authorize(.pointerMove(point), sessionID: "s3", nowNanoseconds: 1_400)
+        }
+    }
+
     @Test func expiredSessionAndCapabilityEscalationAreDenied() throws {
         var policy = RemoteSessionPolicy(maximumInactivityNanoseconds: 500)
         let request = SessionApprovalRequest(sessionID: "s1", deviceID: "d1", deviceName: "Phone", requestedCapabilities: [.controlPointer, .typeText], expiresAtNanoseconds: 5_000)

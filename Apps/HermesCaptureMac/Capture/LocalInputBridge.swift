@@ -292,8 +292,8 @@ final class LocalInputBridge {
         }
     }
 
-    /// One key down and up per character with real virtual key codes and shift (a Citrix lookup
-    /// field ignores unicode-string key events); a character with no key code goes as a unicode
+    /// One key down and up per character with real virtual key codes and shift (some
+    /// remote-desktop fields ignore unicode-string key events); a character with no key code goes as a unicode
     /// event, and a newline as Return.
     private func typeText(_ text: String) async throws {
         for (index, character) in text.enumerated() {

@@ -23,17 +23,21 @@ final class PairingCoordinator {
     private var pendingArrivedThroughRelay = false
     private(set) var activeCapabilities: Set<SessionCapability> = []
     private(set) var errorDescription: String?
+    /// The phones this Mac trusts, newest pairing first.
+    private(set) var pairedDevices: [TrustedPeerRecord] = []
+    /// Why the list above may be out of date: the keychain could not be read or written.
+    private(set) var pairedDevicesError: String?
 
     private let advertiser = CompanionAdvertiser()
     private let server = PairingServer()
     private let reconnectServer = ReconnectServer()
     private let identityStore = PairingIdentityStore()
-    private let trustedClientStore = TrustedClientStore()
+    private let trustedClientStore: TrustedClientStore
     private let remoteController = MacRemoteSessionController()
     private var identity: PairingIdentity?
     private var offer: SignedPairingPayload?
     private var activeChannel: PeerSessionChannel?
-    private var activePeerSigningPublicKey: Data?
+    private(set) var activePeerSigningPublicKey: Data?
     private var availabilityServiceName: String?
     private var reconnectInFlight = false
     private var approvalInFlight = SingleFlightGate<String>()
@@ -43,6 +47,10 @@ final class PairingCoordinator {
     private var relayAvailabilityTask: Task<Void, Never>?
     private var reconnectRoute: ReconnectRoute?
     private var isShuttingDown = false
+
+    init(trustedClientStore: TrustedClientStore = TrustedClientStore()) {
+        self.trustedClientStore = trustedClientStore
+    }
 
     func startAvailability() {
         guard !isShuttingDown, !isPairing, pending == nil, !isControlling else {
@@ -137,6 +145,10 @@ final class PairingCoordinator {
                 approvalInFlight.end(pending.sessionID)
                 isApprovalInFlight = false
             }
+            // The owner's approval is what lets a phone revoked earlier in this run back in.
+            await remoteController.readmit(deviceID: pending.deviceID)
+            // Declined, revoked or replaced meanwhile: whatever ended it has already cleaned up.
+            guard self.pending?.sessionID == pending.sessionID else { return }
             await activate(
                 pending,
                 persistApprovedCapabilities: pending.requestedCapabilities
@@ -148,6 +160,9 @@ final class PairingCoordinator {
         _ pending: PendingPairing,
         persistApprovedCapabilities: Set<SessionCapability>?
     ) async {
+        // The phone counts as the active one while its session starts, so Revoke or Stop Control
+        // in that time closes its channel at once.
+        activePeerSigningPublicKey = pending.clientSigningPublicKey
         do {
             try pending.channel.approve(
                 capabilities: pending.requestedCapabilities,
@@ -167,15 +182,21 @@ final class PairingCoordinator {
                 throw PeerSessionChannelError.connectionClosed
             }
             if let persistApprovedCapabilities {
+                // A saved phone approved for more keeps the date it was first paired.
+                let pairedAt = pending.isReconnect
+                    ? (try? trustedClientStore.record(signingPublicKey: pending.clientSigningPublicKey))?.createdAt
+                    : nil
                 try trustedClientStore.save(
                     TrustedPeerRecord(
                         signingPublicKey: pending.clientSigningPublicKey,
                         keyAgreementPublicKey: pending.clientKeyAgreementPublicKey,
                         serviceName: pending.serviceName,
                         displayName: pending.deviceName,
-                        approvedCapabilities: persistApprovedCapabilities
+                        approvedCapabilities: persistApprovedCapabilities,
+                        createdAt: pairedAt ?? .now
                     )
                 )
+                refreshPairedDevices()
             }
             self.pending = nil
             self.isPairing = false
@@ -190,14 +211,24 @@ final class PairingCoordinator {
                 + "; allowed: " + pending.requestedCapabilities.map(\.rawValue).sorted().joined(separator: ", "))
             startAvailability()
         } catch {
+            // Revoke, Stop Control or the phone ended the session while it started: that path
+            // closed the channel with its own reason and advertises again.
+            let endedMeanwhile = activePeerSigningPublicKey != pending.clientSigningPublicKey
             ActivityLog.shared.write(.session, "Session with \(Self.loggedName(pending.deviceName)) could not start: \(error)")
-            pending.channel.close(reason: "approval-failed")
+            if !endedMeanwhile {
+                pending.channel.close(reason: "approval-failed")
+            }
             if activeChannel === pending.channel {
                 activeChannel = nil
             }
             await remoteController.stop()
-            self.pending = nil
-            self.activePeerSigningPublicKey = nil
+            if self.pending?.sessionID == pending.sessionID {
+                self.pending = nil
+            }
+            if activePeerSigningPublicKey == pending.clientSigningPublicKey {
+                activePeerSigningPublicKey = nil
+            }
+            guard !endedMeanwhile else { return }
             self.errorDescription = pending.isReconnect
                 ? "Reconnect request could not be authorized."
                 : String(describing: error)
@@ -214,9 +245,12 @@ final class PairingCoordinator {
         startAvailability()
     }
 
+    /// Ends the session, its input and any assistant run, a run that went on without its phone too.
+    /// The phone stays trusted: it can reconnect, which Revoke would prevent.
     func stopControl() {
         let channel = activeChannel
-        if channel != nil {
+        let endsConnection = channel != nil || pending != nil
+        if channel != nil || AssistantStatus.shared.isActive {
             ActivityLog.shared.write(.session, "Session stopped on the Mac (Stop Control)")
         }
         activeChannel = nil
@@ -230,7 +264,10 @@ final class PairingCoordinator {
         Task { [weak self] in
             guard let self else { return }
             await remoteController.stop()
-            startAvailability()
+            // With only a run going on without its phone, advertising never stopped.
+            if endsConnection {
+                startAvailability()
+            }
         }
     }
 
@@ -486,7 +523,8 @@ final class PairingCoordinator {
                 clientSigningPublicKey: accepted.trustedPeer.signingPublicKey,
                 clientKeyAgreementPublicKey: accepted.trustedPeer.keyAgreementPublicKey,
                 serviceName: serviceName,
-                isReconnect: true
+                isReconnect: true,
+                confirmationCode: nil
             )
             ActivityLog.shared.write(.session, "Reconnect from \(Self.loggedName(accepted.deviceName)) "
                 + (connectionIsEstablished ? "through the relay" : "on the local network")
@@ -504,19 +542,55 @@ final class PairingCoordinator {
         }
     }
 
+    func refreshPairedDevices() {
+        do {
+            pairedDevices = try trustedClientStore.records().sorted { $0.createdAt > $1.createdAt }
+            pairedDevicesError = nil
+        } catch {
+            pairedDevicesError = "The list of paired devices could not be read."
+        }
+    }
+
+    /// Ends the phone's session and input now and removes its trust: it comes back only through a
+    /// new pairing code and a new approval on the Mac. Trust goes first, so no reconnect slips in
+    /// between, and the session ends even when the keychain write fails.
     func revokePeer(signingPublicKey: Data) {
+        let deviceID = SHA256.hash(data: signingPublicKey).map { String(format: "%02x", $0) }.joined()
+        let name = pairedDevices.first { $0.signingPublicKey == signingPublicKey }
+            .map { Self.loggedName($0.displayName) } ?? "a phone"
+        var trustRemoved = true
         do {
             try trustedClientStore.revoke(signingPublicKey: signingPublicKey)
-            if activePeerSigningPublicKey == signingPublicKey {
-                stopControl()
-            }
-            // A run going on without its phone ends when a phone loses the Mac's trust.
-            Task { await remoteController.stopDetachedRun(why: "a phone was removed on the Mac") }
-            if pending?.clientSigningPublicKey == signingPublicKey {
-                decline()
-            }
+            ActivityLog.shared.write(.pairing, "\(name) revoked on the Mac; it must pair again with a new code")
         } catch {
-            errorDescription = "The saved device could not be revoked."
+            trustRemoved = false
+            ActivityLog.shared.write(.pairing, "Revoking \(name) could not remove its trust: \(error)")
+        }
+        let endsSession = activePeerSigningPublicKey == signingPublicKey
+        if endsSession {
+            let channel = activeChannel
+            activeChannel = nil
+            channel?.close(reason: "revoked-on-mac")
+            isControlling = false
+            connectedDeviceName = nil
+            activePeerSigningPublicKey = nil
+            activeCapabilities.removeAll()
+        }
+        let endsRequest = pending?.clientSigningPublicKey == signingPublicKey
+        if endsRequest {
+            pending?.channel.close(reason: "revoked-on-mac")
+            pending = nil
+        }
+        refreshPairedDevices()
+        if !trustRemoved {
+            pairedDevicesError = "The pairing could not be removed. Try Revoke again."
+        }
+        Task { [weak self] in
+            guard let self else { return }
+            await remoteController.revoke(deviceID: deviceID)
+            if endsSession || endsRequest {
+                startAvailability()
+            }
         }
     }
 

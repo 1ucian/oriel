@@ -8,11 +8,23 @@ enum TrustedClientStoreError: Error {
     case invalidStoredRecord
 }
 
+/// Where the list of trusted devices is kept: one keychain item in the app, memory in tests.
+protocol TrustedClientStorage {
+    func read() throws -> Data?
+    func write(_ data: Data) throws
+}
+
 final class TrustedClientStore: @unchecked Sendable {
     static let service = "com.67enterprise.oriel.trusted-ios-peers.v1"
     static let account = "trusted-peers"
 
-    private static func baseQuery() -> [CFString: Any] {
+    private let storage: any TrustedClientStorage
+
+    init(storage: any TrustedClientStorage = KeychainTrustedClientStorage()) {
+        self.storage = storage
+    }
+
+    fileprivate static func baseQuery() -> [CFString: Any] {
         [
             kSecClass: kSecClassGenericPassword,
             kSecAttrService: service,
@@ -52,15 +64,7 @@ final class TrustedClientStore: @unchecked Sendable {
     }
 
     func records() throws -> [TrustedPeerRecord] {
-        var query = Self.itemQuery()
-        query[kSecReturnData] = true
-        query[kSecMatchLimit] = kSecMatchLimitOne
-        var result: CFTypeRef?
-        let status = SecItemCopyMatching(query as CFDictionary, &result)
-        if status == errSecItemNotFound { return [] }
-        guard status == errSecSuccess, let data = result as? Data else {
-            throw TrustedClientStoreError.keychain(status)
-        }
+        guard let data = try storage.read() else { return [] }
         do {
             let records = try Self.decoder.decode([TrustedPeerRecord].self, from: data)
             try records.forEach { try $0.validate() }
@@ -88,19 +92,7 @@ final class TrustedClientStore: @unchecked Sendable {
     }
 
     private func write(_ records: [TrustedPeerRecord]) throws {
-        let data = try Self.encoder.encode(records)
-        let attributes: [CFString: Any] = [kSecValueData: data]
-        let status = SecItemUpdate(Self.baseQuery() as CFDictionary, attributes as CFDictionary)
-        if status == errSecItemNotFound {
-            let addStatus = SecItemAdd(Self.newItemQuery(data: data) as CFDictionary, nil)
-            guard addStatus == errSecSuccess else {
-                throw TrustedClientStoreError.keychain(addStatus)
-            }
-            return
-        }
-        guard status == errSecSuccess else {
-            throw TrustedClientStoreError.keychain(status)
-        }
+        try storage.write(Self.encoder.encode(records))
     }
 
     private static var encoder: JSONEncoder {
@@ -114,5 +106,36 @@ final class TrustedClientStore: @unchecked Sendable {
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .millisecondsSince1970
         return decoder
+    }
+}
+
+/// The list as one data-protection keychain item that never prompts.
+final class KeychainTrustedClientStorage: TrustedClientStorage {
+    func read() throws -> Data? {
+        var query = TrustedClientStore.itemQuery()
+        query[kSecReturnData] = true
+        query[kSecMatchLimit] = kSecMatchLimitOne
+        var result: CFTypeRef?
+        let status = SecItemCopyMatching(query as CFDictionary, &result)
+        if status == errSecItemNotFound { return nil }
+        guard status == errSecSuccess, let data = result as? Data else {
+            throw TrustedClientStoreError.keychain(status)
+        }
+        return data
+    }
+
+    func write(_ data: Data) throws {
+        let attributes: [CFString: Any] = [kSecValueData: data]
+        let status = SecItemUpdate(TrustedClientStore.baseQuery() as CFDictionary, attributes as CFDictionary)
+        if status == errSecItemNotFound {
+            let addStatus = SecItemAdd(TrustedClientStore.newItemQuery(data: data) as CFDictionary, nil)
+            guard addStatus == errSecSuccess else {
+                throw TrustedClientStoreError.keychain(addStatus)
+            }
+            return
+        }
+        guard status == errSecSuccess else {
+            throw TrustedClientStoreError.keychain(status)
+        }
     }
 }

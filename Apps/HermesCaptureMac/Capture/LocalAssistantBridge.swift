@@ -329,7 +329,7 @@ final class LocalAssistantBridge {
         guard var configuration = configuration() else {
             ActivityLog.shared.write(.assistant, "Local run \(goal.id.prefix(8)) refused: no model is configured on the Mac")
             write(LocalAssistantResult(id: goal.id, status: .failed,
-                                       why: "No model is configured on the Mac. Open Oriel on the Mac, Permissions & Diagnostics, Assistant."))
+                                       why: "No model is configured on the Mac. On the Mac, open Oriel's Settings, Assistant tab."))
             return
         }
         configuration.readOnly = goal.readOnly

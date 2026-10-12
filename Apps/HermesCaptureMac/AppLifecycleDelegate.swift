@@ -31,8 +31,8 @@ final class OrielApplicationDelegate: NSObject, NSApplicationDelegate {
     private let screenCaptureRequest: () -> Bool
     private let presentsPairingAtLaunch: Bool
     /// Only a start the owner made asks for Screen Recording. A background start (launchd at
-    /// login, `--headless`) left its system prompt behind other windows, where it kept
-    /// resurfacing (Lucian 10-07); it waits for access instead.
+    /// login, `--headless`) would leave its system prompt behind other windows, where it keeps
+    /// resurfacing; it waits for access instead.
     private let asksForScreenCapture: Bool
     var screenCapturePollInterval: Duration = .seconds(30)
     private var screenCaptureWait: Task<Void, Never>?

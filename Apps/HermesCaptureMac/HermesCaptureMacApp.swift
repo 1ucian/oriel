@@ -67,6 +67,36 @@ struct MacHostPresentation {
         case .approveSensitiveAction: "Approve sensitive actions"
         }
     }
+
+    /// What a paired phone may do, as a sentence in the order the capabilities are declared.
+    static func allowedSentence(_ capabilities: Set<SessionCapability>) -> String {
+        let phrases = SessionCapability.allCases.filter(capabilities.contains).map(allowedPhrase)
+        guard let last = phrases.last else { return "Nothing approved." }
+        let list = phrases.count == 1 ? last : phrases.dropLast().joined(separator: ", ") + " and " + last
+        return "Can " + list + "."
+    }
+
+    static func allowedPhrase(_ capability: SessionCapability) -> String {
+        switch capability {
+        case .viewScreen: "view the screen"
+        case .controlPointer: "control the pointer"
+        case .typeText: "type text"
+        case .readClipboard: "read the clipboard"
+        case .writeClipboard: "write to the clipboard"
+        case .transferFiles: "transfer files"
+        case .runAgentActions: "run the assistant"
+        case .enterSecrets: "enter secrets"
+        case .approveSensitiveAction: "approve sensitive actions"
+        }
+    }
+
+    static func pairedLine(
+        _ date: Date,
+        locale: Locale = .autoupdatingCurrent,
+        timeZone: TimeZone = .autoupdatingCurrent
+    ) -> String {
+        "Paired " + date.formatted(Date.FormatStyle(date: .abbreviated, time: .omitted, locale: locale, timeZone: timeZone))
+    }
 }
 
 @main

@@ -13,6 +13,8 @@ struct PendingPairing: @unchecked Sendable {
     let clientKeyAgreementPublicKey: Data
     let serviceName: String
     let isReconnect: Bool
+    /// The six digits the phone shows while it waits, for a new pairing; nil for a reconnect.
+    let confirmationCode: PairingConfirmationCode?
 }
 
 actor PairingServer {
@@ -37,6 +39,11 @@ actor PairingServer {
         )
         try request.verify(expectedNonce: offer.payload.nonce)
         try await replayProtector.consume(offer.payload)
+        let confirmationCode = try PairingConfirmationCode(
+            macAgreementKey: identity.keyAgreementKey,
+            macSigningPublicKey: identity.signingKey.publicKey.rawRepresentation,
+            request: request.payload
+        )
 
         let cipher = try SessionCipher(
             localPrivateKey: identity.keyAgreementKey,
@@ -62,7 +69,8 @@ actor PairingServer {
             clientSigningPublicKey: request.payload.clientSigningPublicKey,
             clientKeyAgreementPublicKey: request.payload.clientKeyAgreementPublicKey,
             serviceName: offer.payload.serviceName,
-            isReconnect: false
+            isReconnect: false,
+            confirmationCode: confirmationCode
         )
     }
 
