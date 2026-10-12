@@ -43,7 +43,7 @@
 ## How it works
 
 ```mermaid
-flowchart LR
+flowchart TD
   phone["iPhone or iPad<br/>Oriel app"]
   mac["Mac companion<br/>menu bar app"]
   relay["Optional relay you host<br/>forwards ciphertext only"]
