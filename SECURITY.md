@@ -9,8 +9,9 @@ everything sensitive to the owner's phone for a per-step decision.
 
 ## Reporting a vulnerability
 
-Email security@67enterprise.com with a description, the versions involved (iOS app build,
-Mac companion build), and steps to reproduce. Please do not open a public issue for a
+Report it privately through GitHub (this repository's Security tab, Report a vulnerability) or
+email info@67enterprise.com, with a description, the versions involved (iOS app build, Mac
+companion build), and steps to reproduce. Please do not open a public issue for a
 vulnerability. We acknowledge reports within three business days, keep you informed while we
 work on a fix, and credit you in the release notes if you want that. We do not run a bug
 bounty.

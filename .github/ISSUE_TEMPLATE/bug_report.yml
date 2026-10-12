@@ -1,0 +1,43 @@
+name: Bug report
+description: Something in the Mac companion, the protocol or the relay doesn't work as it should.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: "Security problem? Please don't file it here. Use the Security tab's private report instead (see SECURITY.md)."
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, what you expected, and what happened instead.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: "1. ...\n2. ...\n3. ..."
+    validations:
+      required: true
+  - type: input
+    id: mac
+    attributes:
+      label: Mac companion version and macOS version
+      placeholder: "Oriel 1.0 (202610111155), macOS 26.4"
+    validations:
+      required: true
+  - type: input
+    id: phone
+    attributes:
+      label: iOS app version and device
+      placeholder: "Oriel 1.0, iPhone 16 Pro, iOS 26.1"
+  - type: input
+    id: model
+    attributes:
+      label: Assistant model, if the assistant was involved
+      placeholder: "Built in, Apple on-device, Ollama qwen3:8b, ..."
+  - type: textarea
+    id: logs
+    attributes:
+      label: Activity log excerpt or screenshots
+      description: Remove names, messages, addresses and anything else personal first.

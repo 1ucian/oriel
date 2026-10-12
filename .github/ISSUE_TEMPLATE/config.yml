@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Report a security vulnerability
+    url: https://github.com/1ucian/oriel/security/advisories/new
+    about: Please report security issues privately.
+  - name: Help with setup
+    url: https://oriel.67enterprise.com/support/
+    about: Pairing, permissions and models, step by step.
