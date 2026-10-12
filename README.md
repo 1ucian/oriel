@@ -7,7 +7,7 @@
   <img alt="macOS 15 or later on Apple silicon" src="https://img.shields.io/badge/macOS-15%2B%20%C2%B7%20Apple%20silicon-0B2425?logo=apple">
   <img alt="Swift 6" src="https://img.shields.io/badge/Swift-6-F05138?logo=swift&logoColor=white">
   <a href="LICENSE"><img alt="Apache 2.0 license" src="https://img.shields.io/badge/license-Apache%202.0-16403F"></a>
-  <a href="https://github.com/1ucian/oriel/stargazers"><img alt="GitHub stars" src="https://img.shields.io/github/stars/1ucian/oriel?color=8FD1C6"></a>
+  <a href="https://github.com/1ucian/oriel"><img alt="GitHub stars" src="https://img.shields.io/github/stars/1ucian/oriel?color=8FD1C6"></a>
 </p>
 
 <h3 align="center">Your Mac, in your pocket, with a pair of hands.</h3>
