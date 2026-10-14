@@ -88,7 +88,7 @@ actor MacRemoteSessionController {
             capabilities: capabilities,
             nowNanoseconds: DispatchTime.now().uptimeNanoseconds
         )
-        channel.onPacket = { [weak self] packet in
+        channel.onPacket = { [weak self, weak channel] packet in
             switch packet {
             case let .input(event):
                 Task { await self?.handleInput(event) }
@@ -96,6 +96,8 @@ actor MacRemoteSessionController {
                 Task { await self?.handleInstruction(instruction) }
             case let .agentControl(control):
                 Task { await self?.handleControl(control) }
+            case let .speechRequest(request):
+                if let channel { SpeechService.relay(request, session: sessionID, over: channel) }
             default:
                 break
             }
@@ -125,6 +127,7 @@ actor MacRemoteSessionController {
         let previousChannel = channel
         channel = nil
         previousChannel?.onPacket = nil
+        if let sessionID { await SpeechService.shared.endSession(sessionID) }
         if let closeReason {
             previousChannel?.close(reason: closeReason)
         }

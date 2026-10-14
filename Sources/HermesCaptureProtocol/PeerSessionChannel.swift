@@ -21,6 +21,11 @@ public final class PeerSessionChannel: @unchecked Sendable {
     private var machine = PeerSessionStateMachine()
     private var receivedReconnectRoute: ReconnectRoute?
     private var receivedCloseReason: String?
+    /// Voice input: what this Mac offered, what the Mac offered this phone, and whether the phone has used it. A peer
+    /// that did not show it speaks the speech packets never gets one; older peers end a session on an unknown kind.
+    private var offeredSpeech: SpeechTranscriptionOffer?
+    private var receivedSpeechOffer: SpeechTranscriptionOffer?
+    private var peerSentSpeech = false
     private var healthMonitor = SessionHealthMonitor(
         startedAtNanoseconds: DispatchTime.now().uptimeNanoseconds
     )
@@ -104,14 +109,20 @@ public final class PeerSessionChannel: @unchecked Sendable {
         try transition(.peerAuthenticated)
     }
 
-    public func approve(capabilities: Set<SessionCapability>, reconnectRoute: ReconnectRoute? = nil) throws {
+    public func approve(
+        capabilities: Set<SessionCapability>,
+        reconnectRoute: ReconnectRoute? = nil,
+        speech: SpeechTranscriptionOffer? = nil
+    ) throws {
         try transition(.approved(capabilities: capabilities))
+        lock.withLock { offeredSpeech = speech }
         try send(
             .approval(
                 .init(
                     capabilities: capabilities,
                     expiresAt: Date.now.addingTimeInterval(3_600),
-                    reconnectRoute: reconnectRoute
+                    reconnectRoute: reconnectRoute,
+                    speech: speech
                 )
             )
         )
@@ -120,6 +131,11 @@ public final class PeerSessionChannel: @unchecked Sendable {
     /// The relay rendezvous the Mac handed over with its approval, if any.
     public var approvedReconnectRoute: ReconnectRoute? {
         lock.withLock { receivedReconnectRoute }
+    }
+
+    /// Voice input the Mac offered with its approval; nil from a Mac or PC that does not offer it.
+    public var speechOffer: SpeechTranscriptionOffer? {
+        lock.withLock { receivedSpeechOffer }
     }
 
     /// The reason the other device gave when it ended the session, if it said goodbye.
@@ -153,6 +169,17 @@ public final class PeerSessionChannel: @unchecked Sendable {
         case .agentTrace, .agentStatus:
             guard current.state == .active else {
                 throw PeerSessionError.controlNotAuthorized
+            }
+        case .speechRequest:
+            // Only to a Mac that offered voice input this session.
+            guard current.state == .active, speechOffer != nil else {
+                throw PeerSessionError.capabilityDenied
+            }
+        case .speechEvent:
+            // Only to a phone that has used voice input this session.
+            let (offered, peerSent) = lock.withLock { (offeredSpeech != nil, peerSentSpeech) }
+            guard current.state == .active, offered, peerSent else {
+                throw PeerSessionError.capabilityDenied
             }
         default:
             break
@@ -316,7 +343,10 @@ public final class PeerSessionChannel: @unchecked Sendable {
         case let .approval(approval):
             // Stored first: the state change below reaches the owner synchronously, and the
             // phone reads the route from inside that callback.
-            lock.withLock { receivedReconnectRoute = approval.reconnectRoute }
+            lock.withLock {
+                receivedReconnectRoute = approval.reconnectRoute
+                receivedSpeechOffer = approval.speech
+            }
             try transition(.approved(capabilities: approval.capabilities))
         case .agentInstruction, .agentControl:
             // The assistant is a control surface: it counts as activity and needs the capability.
@@ -325,6 +355,22 @@ public final class PeerSessionChannel: @unchecked Sendable {
             }
             try transition(.controlReceived)
         case .agentTrace, .agentStatus:
+            guard currentState == .active || currentState == .stale else {
+                throw PeerSessionError.invalidTransition
+            }
+        case .speechRequest:
+            // Voice input this Mac did not offer is a protocol violation, like any capability it did not grant.
+            guard lock.withLock({ offeredSpeech != nil }) else {
+                throw PeerSessionError.capabilityDenied
+            }
+            guard currentState == .active || currentState == .stale else {
+                throw PeerSessionError.invalidTransition
+            }
+            lock.withLock { peerSentSpeech = true }
+        case .speechEvent:
+            guard speechOffer != nil else {
+                throw PeerSessionError.capabilityDenied
+            }
             guard currentState == .active || currentState == .stale else {
                 throw PeerSessionError.invalidTransition
             }

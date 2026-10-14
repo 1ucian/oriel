@@ -166,7 +166,8 @@ final class PairingCoordinator {
         do {
             try pending.channel.approve(
                 capabilities: pending.requestedCapabilities,
-                reconnectRoute: reconnectRoute
+                reconnectRoute: reconnectRoute,
+                speech: SpeechSettings.shared.offer(for: pending.requestedCapabilities)
             )
             observeActiveChannel(pending.channel)
             try await remoteController.start(

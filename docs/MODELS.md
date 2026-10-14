@@ -44,6 +44,29 @@ Rules the code enforces (see `ScreenshotSharingPolicy`, `AgentApprovalPolicy` an
 - Models load when the phone connects and stay loaded while it is connected (Ollama `keep_alive`, at most ten idle minutes), so no run waits for them; they are released when the phone disconnects. Nothing stays loaded while no phone is connected.
 - Protected surfaces (passwords, one-time codes, payments, security dialogs, CAPTCHA, destructive and public actions, medical-record signing) are refused or routed to the owner before any input reaches the Mac.
 
+## Voice input
+
+The phone's mic sends the user's voice over the session to the Mac, which turns it into text
+and sends the text back to the field the mic belongs to. The phone runs no speech model.
+
+| Role | Model | License | Where it runs |
+|---|---|---|---|
+| Speech to text | Whisper large-v3 (OpenAI), the `mlx-community/whisper-large-v3-mlx` fp16 weights Hermes uses, about 3.1 GB, downloaded once | MIT | On the Mac with MLX (`Speech/Whisper/`, a port of mlx-whisper's `transcribe`) |
+
+Settings, Assistant, Voice input sets the language (English by default, or detected) and a
+vocabulary, the names and terms Whisper should expect, passed as its initial prompt (empty by
+default). Decoding follows mlx-whisper: temperature fallback, compression and log-probability
+checks, and the no-speech test, so silence comes back empty instead of invented. The model
+is never loaded at launch: it loads when it is first prepared or an utterance starts, and
+leaves memory after ten minutes without a transcription, or at once when macOS reports memory
+pressure (a warning or critical event) and nothing is being transcribed. A Mac that already
+has the weights in its Hugging Face cache (as Hermes leaves them) uses that copy. Both come
+at fixed Hugging Face commits, and each file (weights, config, vocabulary) is checked against a
+SHA-256 built into the app before it is loaded; a file that fails is not loaded, Oriel's own
+copy is deleted, and the other tool's cache is left alone. On an M4 Pro
+a 5-second command comes back in about 0.7 s (Release build), the same text and speed as
+Hermes's mlx-whisper with the same weights; the model takes about 4 GB of memory while loaded.
+
 ## Licenses of the defaults
 
 - Qwen3.5 4B and 9B: Apache-2.0 (Alibaba Cloud). Commercial use permitted. The 9B takes images, so one model can plan and see.

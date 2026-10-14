@@ -25,6 +25,85 @@ struct WireVectorTests {
         let fixture = try WireVectorFixture.read(WireVectorFixture.windowsURL)
         try WireVectorFixture.verifyWindowsFixture(fixture)
     }
+
+    /// Voice input (SpeechProtocol.swift) in its own file, `Tests/Fixtures/wire-v1-speech.json`, so the v1 vectors the
+    /// Windows tests read stay as they are: the PC neither offers nor speaks these packets.
+    /// `ORIEL_WRITE_SPEECH_VECTORS=1 swift test --filter WireVectorTests` rewrites it.
+    @Test func speechVectorsMatchThisImplementation() throws {
+        if ProcessInfo.processInfo.environment["ORIEL_WRITE_SPEECH_VECTORS"] == "1" {
+            try WireVectorFixture.write(SpeechWireVectors.generate(), to: SpeechWireVectors.url)
+        }
+        try SpeechWireVectors.verify(WireVectorFixture.read(SpeechWireVectors.url))
+    }
+}
+
+/// The Mac's approval with its offer and its speech events, and every speech request a phone sends, sealed with the
+/// pairing keys of the v1 vectors.
+enum SpeechWireVectors {
+    static var url: URL { WireVectorFixture.fixturesDirectory.appendingPathComponent("wire-v1-speech.json") }
+    static let utterance = "6F9619FF-8B86-D011-B42D-00C04FC964FF"
+
+    static func macPackets() throws -> [(name: String, packet: SessionPacket)] {
+        [
+            ("approval-offer", .approval(SessionApproval(
+                capabilities: SessionCapability.phaseOneDefaults,
+                expiresAt: WireVectorInputs.approvalExpiresAt,
+                speech: .current
+            ))),
+            ("status-downloading", .speechEvent(.status(try SpeechModelStatus(
+                state: .downloading, progress: 0.25, modelName: "Whisper large-v3", downloadBytes: 3_083_520_416
+            )))),
+            ("status-ready", .speechEvent(.status(try SpeechModelStatus(state: .ready, modelName: "Whisper large-v3")))),
+            ("transcript", .speechEvent(.transcript(try SpeechTranscript(
+                utteranceID: utterance, text: "Open Safari and search for the weather in Lisbon.", audioSeconds: 4.75, elapsedSeconds: 0.5
+            )))),
+            ("failure", .speechEvent(.failure(try SpeechFailure(
+                utteranceID: utterance, reason: .tooLong, message: "Keep it under a minute."
+            )))),
+        ]
+    }
+
+    static func phonePackets() throws -> [(name: String, packet: SessionPacket)] {
+        [
+            ("subscribe", .speechRequest(.subscribe)),
+            ("prepare", .speechRequest(.prepare)),
+            ("begin", .speechRequest(.begin(utteranceID: utterance))),
+            ("audio-0", .speechRequest(.audio(try SpeechAudioChunk(
+                utteranceID: utterance, sequence: 0, samples: Data([0x00, 0x00, 0xFF, 0x7F, 0x00, 0x80, 0x34, 0x12])
+            )))),
+            ("audio-1", .speechRequest(.audio(try SpeechAudioChunk(utteranceID: utterance, sequence: 1, samples: Data([0x01, 0x00]))))),
+            ("end", .speechRequest(.end(utteranceID: utterance))),
+            ("cancel", .speechRequest(.cancel(utteranceID: utterance))),
+        ]
+    }
+
+    static func generate() throws -> WireVectorFixture.Object {
+        [
+            "about": "Oriel voice input (speech protocol v1) vectors, written by WireVectorTests.swift with the keys and pairing nonce of wire-v1.json.",
+            "speechVersion": SpeechProtocol.version,
+            "macFrames": try WireVectorFixture.sealFrames(macPackets(), role: .mac, nonce: WireVectorInputs.pairingNonce),
+            "phoneFrames": try WireVectorFixture.sealFrames(phonePackets(), role: .client, nonce: WireVectorInputs.pairingNonce),
+        ]
+    }
+
+    static func verify(_ fixture: WireVectorFixture.Object) throws {
+        #expect((fixture["speechVersion"] as? NSNumber)?.intValue == SpeechProtocol.version)
+        let macFrames = try WireVectorFixture.objects(fixture, "macFrames")
+        try WireVectorFixture.openFrames(macFrames, with: WireVectorFixture.cipher(.client, nonce: WireVectorInputs.pairingNonce),
+                                         expected: macPackets())
+        try WireVectorFixture.openFrames(try WireVectorFixture.objects(fixture, "phoneFrames"),
+                                         with: WireVectorFixture.cipher(.mac, nonce: WireVectorInputs.pairingNonce),
+                                         expected: phonePackets())
+        // The approval as an older phone reads it: same capabilities and expiry, the offer skipped.
+        let approval = try WireVectorFixture.data(try #require(macFrames.first), "plaintext")
+        let legacy = try LegacyPeer.decodeApproval(approval)
+        #expect(legacy.capabilities == SessionCapability.phaseOneDefaults)
+        #expect(legacy.expiresAt == WireVectorInputs.approvalExpiresAt)
+        // Every other frame is a kind older peers do not know, so neither side may send it to one.
+        for frame in macFrames.dropFirst() + (try WireVectorFixture.objects(fixture, "phoneFrames")) {
+            #expect(throws: LegacyPeer.Error.unknownKind) { try LegacyPeer.decodeKind(WireVectorFixture.data(frame, "plaintext")) }
+        }
+    }
 }
 
 enum WireVectorInputs {

@@ -1,11 +1,14 @@
 # Third-Party Notices
 
-The iOS app has no third-party dependencies. The Mac companion links the built-in assistant engine listed below; neither app bundles model weights, which are fetched by the user on first use under their own licenses.
+The iOS app has no third-party dependencies; its voice input records with Apple frameworks and leaves the speech model to the Mac. The Mac companion links the built-in assistant engine and the voice input engine listed below; neither app bundles model weights, which are fetched by the user on first use under their own licenses.
 
 | Mac companion component | Version | License | Notes |
 |---|---|---|---|
 | mlx-swift-lm (MLXLLM, MLXVLM, MLXLMCommon, MLXHuggingFace) | 3.32.3 | MIT | On-device inference for the built-in planner, executor and vision models. Preserve the MIT notice in the shipped bundle. |
-| mlx-swift (transitive) | per mlx-swift-lm | MIT | Metal and CPU kernels. Preserve the MIT notice. |
+| mlx-swift (MLX, MLXNN) | 0.32.3, the copy mlx-swift-lm resolves | MIT | Metal and CPU kernels, used directly by the voice input engine too. Preserve the MIT notice. |
+| Whisper on MLX (`Apps/HermesCaptureMac/Speech/Whisper/`) | ported from mlx-whisper 0.4.3 | MIT | A Swift port of Apple's mlx-examples Whisper (Copyright 2023 Apple Inc.), itself derived from OpenAI's Whisper (Copyright 2022 OpenAI). Preserve both MIT notices. |
+| Whisper large-v3 weights (downloaded on first use) | `mlx-community/whisper-large-v3-mlx`, fp16 | MIT | Voice input's speech model, the one Hermes uses. Not redistributed by Oriel; the Mac downloads it from Hugging Face, or reuses a complete copy already in the user's Hugging Face cache. |
+| Whisper tokenizer vocabulary (`vocab.json`, downloaded on first use) | `openai/whisper-large-v3` | Apache-2.0 (per its model card) | Read by the Swift tokenizer; not redistributed by Oriel. |
 | swift-huggingface | 0.9.x | Apache-2.0 | Fetches model weights into Oriel's own folder. Preserve the Apache notice. |
 | swift-transformers (Tokenizers) | 1.3.x | Apache-2.0 | Tokenizers for the built-in models. Preserve the Apache notice. |
 | Qwen3 4B / 8B, Qwen3-VL 4B (weights, downloaded on first use) | mlx-community 4-bit conversions | Apache-2.0 | Not redistributed by Oriel; the user downloads them from Hugging Face. Qwen2.5-VL 3B is under a research-only license and is not offered. |

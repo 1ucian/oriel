@@ -277,6 +277,31 @@ class RelayIntegrationTests(unittest.IsolatedAsyncioTestCase):
                 await writer.wait_closed()
             self.assertEqual(await asyncio.wait_for(first_reader.read(), 1), b"")
 
+    async def test_same_device_registering_again_replaces_its_stale_pending_slot(self):
+        async with running_relay() as (relay, port):
+            key = Ed25519PrivateKey.generate()
+            stale_reader, stale_writer = await self.open_registered(
+                port, registration("host", key, connection_nonce=b"a" * 24)
+            )
+            await asyncio.sleep(0.05)
+            fresh_reader, fresh_writer = await self.open_registered(
+                port, registration("host", key, connection_nonce=b"b" * 24)
+            )
+            # The earlier connection is closed and the room still waits, now on the fresh one.
+            self.assertEqual(await asyncio.wait_for(stale_reader.read(), 1), b"")
+            self.assertEqual(relay.pending_count, 1)
+
+            client_reader, client_writer = await self.open_registered(
+                port, registration("client", Ed25519PrivateKey.generate())
+            )
+            self.assertEqual(await asyncio.wait_for(fresh_reader.readexactly(len(ACK)), 1), ACK)
+            self.assertEqual(await asyncio.wait_for(client_reader.readexactly(len(ACK)), 1), ACK)
+            self.assertEqual(relay.pending_count, 0)
+
+            for writer in (stale_writer, fresh_writer, client_writer):
+                writer.close()
+                await writer.wait_closed()
+
     async def test_mismatched_pairing_digest_does_not_pair(self):
         async with running_relay() as (_, port):
             host_reader, host_writer = await self.open_registered(

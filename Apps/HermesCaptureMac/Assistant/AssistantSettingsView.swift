@@ -43,6 +43,8 @@ struct AssistantSettingsView: View {
                         .foregroundStyle(.secondary)
                 }
             }
+
+            VoiceInputSettingsSection(settings: SpeechSettings.shared)
         }
         .formStyle(.grouped)
         .onAppear(perform: refreshLoaded)

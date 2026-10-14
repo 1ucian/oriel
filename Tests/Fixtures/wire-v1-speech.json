@@ -1,0 +1,92 @@
+{
+  "about" : "Oriel voice input (speech protocol v1) vectors, written by WireVectorTests.swift with the keys and pairing nonce of wire-v1.json.",
+  "macFrames" : [
+    {
+      "counter" : 1,
+      "frame" : "AAAA1gEAAAAAAAAADT+p90cVXVHGYyiKEbrqfmzhuvFwqZX6htIqBad3aF5Cjf6qApj4diquSK0TcLXmFnsUV9jWIYwTvQqZFxWjZVsSHH15Ls9I7TcqB4jahf3mG0eSA5HZKeZ5ZU9M6q2yB/kyMoyeT17pre0WrklCfCH7q901XjoPWMPCFOvibGyqaAKxxfuHPeNSADj5NtgWdR+fMy49wvqrpmpg8RI6SuWUPW6KvQDCo5C01kAtqEn7EASe8C1nY2HE53M01PxQPy7t+V2EXKl52YQMhBc=",
+      "name" : "approval-offer",
+      "plaintext" : "eyJhcHByb3ZhbCI6eyJjYXBhYmlsaXRpZXMiOlsidmlld1NjcmVlbiIsImNvbnRyb2xQb2ludGVyIiwidHlwZVRleHQiXSwiZXhwaXJlc0F0IjoxNzkxNjgwNDA1MDAwLCJzcGVlY2giOnsibWF4aW11bVNlY29uZHMiOjYwLCJzYW1wbGVSYXRlIjoxNjAwMCwidmVyc2lvbiI6MX19LCJraW5kIjoiYXBwcm92YWwifQ==",
+      "plaintextText" : "{\"approval\":{\"capabilities\":[\"viewScreen\",\"controlPointer\",\"typeText\"],\"expiresAt\":1791680405000,\"speech\":{\"maximumSeconds\":60,\"sampleRate\":16000,\"version\":1}},\"kind\":\"approval\"}"
+    },
+    {
+      "counter" : 2,
+      "frame" : "AAAA0QIAAAAAAAAA9+ENxbM8i0fHDD6Bg8jZnMoafq8pA1bAPBbkScSY3l0FzZRSbceCxc1t0yMD2GUQ2QTAPQTw+nICEFUcoDPwiYXskxYvvP/CYNiM5UYiV87ERihZTPcBHzuKVaBC22/NLOQXmnfTXYARfh7d/R+8za6MBpMQQ2vbqaS7iSoVnyqx9bUeh955xHvvztjIjlafiGNEioPOI6v0zGRFImnnpeQSy69TIIaiEw9DFuQ8G6RIQ4rGDx1V8RT4b0ayetayWv3JXIq+TQNY",
+      "name" : "status-downloading",
+      "plaintext" : "eyJraW5kIjoic3BlZWNoRXZlbnQiLCJzcGVlY2hFdmVudCI6eyJraW5kIjoic3RhdHVzIiwic3RhdHVzIjp7ImRvd25sb2FkQnl0ZXMiOjMwODM1MjA0MTYsIm1vZGVsTmFtZSI6IldoaXNwZXIgbGFyZ2UtdjMiLCJwcm9ncmVzcyI6MC4yNSwic3RhdGUiOiJkb3dubG9hZGluZyJ9LCJ2ZXJzaW9uIjoxfX0=",
+      "plaintextText" : "{\"kind\":\"speechEvent\",\"speechEvent\":{\"kind\":\"status\",\"status\":{\"downloadBytes\":3083520416,\"modelName\":\"Whisper large-v3\",\"progress\":0.25,\"state\":\"downloading\"},\"version\":1}}"
+    },
+    {
+      "counter" : 3,
+      "frame" : "AAAAoAMAAAAAAAAAnMkoc23GPxlniQIcPhwh65x3zqtcpYqzNLMyV+VsmAS4Tn+dmG6Foba+PAOL8erB8ypprfLe9fa100GsDcgzDRgam1IJKanVZgjZzSmarb5sSO+wZ+F0dHI8EiXTrcJ4/jefoacjwFOBepUMY35Tzz3II115OZGDz6+Q4s+6v0Kq2egYE3TvdDxhuPd0pITim0cjNNXcOdc=",
+      "name" : "status-ready",
+      "plaintext" : "eyJraW5kIjoic3BlZWNoRXZlbnQiLCJzcGVlY2hFdmVudCI6eyJraW5kIjoic3RhdHVzIiwic3RhdHVzIjp7Im1vZGVsTmFtZSI6IldoaXNwZXIgbGFyZ2UtdjMiLCJzdGF0ZSI6InJlYWR5In0sInZlcnNpb24iOjF9fQ==",
+      "plaintextText" : "{\"kind\":\"speechEvent\",\"speechEvent\":{\"kind\":\"status\",\"status\":{\"modelName\":\"Whisper large-v3\",\"state\":\"ready\"},\"version\":1}}"
+    },
+    {
+      "counter" : 4,
+      "frame" : "AAABEgQAAAAAAAAAX4/TdMFVNpcunW8UxdAFsyVTvwcKSWrIqG14CTUV3+j12JkrDCLezAUF+mBm1Rc9wav5WU96L9LpPS3OjUJBDAeiEmMMZ+X0BvFTePRSQyo7awOKkiarXIIHcJI46AFycPZ1q+5S3K3bhPHrCFEbYpbv1qtb9YDGfO3ktzo9UzG7pFBvnncIN0u7J3GJP5GRD0ky5oS0tbB2iSMXFXKPO1I87A/MUU8Tcbm+Brs1U2mZISZBKIG9Rsf3N4jPDmFJaAftfM+9IYBaH+OxjmM2ewUCrIcODH1tadRRJITEPGAH4vGmD2E5Hgu0Hg6HrynMcYWjKlNwhvbgU6vOuyiIAc1YHs1EvZIyGmQ=",
+      "name" : "transcript",
+      "plaintext" : "eyJraW5kIjoic3BlZWNoRXZlbnQiLCJzcGVlY2hFdmVudCI6eyJraW5kIjoidHJhbnNjcmlwdCIsInRyYW5zY3JpcHQiOnsiYXVkaW9TZWNvbmRzIjo0Ljc1LCJlbGFwc2VkU2Vjb25kcyI6MC41LCJ0ZXh0IjoiT3BlbiBTYWZhcmkgYW5kIHNlYXJjaCBmb3IgdGhlIHdlYXRoZXIgaW4gTGlzYm9uLiIsInV0dGVyYW5jZUlEIjoiNkY5NjE5RkYtOEI4Ni1EMDExLUI0MkQtMDBDMDRGQzk2NEZGIn0sInZlcnNpb24iOjF9fQ==",
+      "plaintextText" : "{\"kind\":\"speechEvent\",\"speechEvent\":{\"kind\":\"transcript\",\"transcript\":{\"audioSeconds\":4.75,\"elapsedSeconds\":0.5,\"text\":\"Open Safari and search for the weather in Lisbon.\",\"utteranceID\":\"6F9619FF-8B86-D011-B42D-00C04FC964FF\"},\"version\":1}}"
+    },
+    {
+      "counter" : 5,
+      "frame" : "AAAA3wUAAAAAAAAAQRu2JZXh+Ej/gtaQwIwFUtiIw3xf1vr4f9X8kc9voVUarWrn06z+nSvcrAEKSryf+VIeyKHMkEFyya+Uy1l2YcGIQvOMQz8Sd3512w0uTTxhDcZ3hN3XLTdkd70YdHEOnABmd0Kp9CBYGI2906TYIrUcQaiR2xKai6Qfu3sugx2MFPxNxF0Zu7tBdrQ9wYcoaKqT2d3gaz2xfBR4RAYApQHmKV+lIQI4cfUnl4neXRxUQ2GGTIQxgVxoPEhPnonUhJX+1+86oxNW/czSQgaHSCuUvyoD8Eg=",
+      "name" : "failure",
+      "plaintext" : "eyJraW5kIjoic3BlZWNoRXZlbnQiLCJzcGVlY2hFdmVudCI6eyJmYWlsdXJlIjp7Im1lc3NhZ2UiOiJLZWVwIGl0IHVuZGVyIGEgbWludXRlLiIsInJlYXNvbiI6InRvb0xvbmciLCJ1dHRlcmFuY2VJRCI6IjZGOTYxOUZGLThCODYtRDAxMS1CNDJELTAwQzA0RkM5NjRGRiJ9LCJraW5kIjoiZmFpbHVyZSIsInZlcnNpb24iOjF9fQ==",
+      "plaintextText" : "{\"kind\":\"speechEvent\",\"speechEvent\":{\"failure\":{\"message\":\"Keep it under a minute.\",\"reason\":\"tooLong\",\"utteranceID\":\"6F9619FF-8B86-D011-B42D-00C04FC964FF\"},\"kind\":\"failure\",\"version\":1}}"
+    }
+  ],
+  "phoneFrames" : [
+    {
+      "counter" : 1,
+      "frame" : "AAAAbQEAAAAAAAAAViTQox+phkLgsN892i6xgeyQTGjkGy6M5y6sNEclX3THFNAwf5MEcRdWcBlKUZkNMLg8CrB3lJOEQ6yc0FhxoCrt4oY69CCkYJiZNqmSIxnNSBFUP3OqTq8rmXv1Cx3DcUg27T8=",
+      "name" : "subscribe",
+      "plaintext" : "eyJraW5kIjoic3BlZWNoUmVxdWVzdCIsInNwZWVjaFJlcXVlc3QiOnsia2luZCI6InN1YnNjcmliZSIsInZlcnNpb24iOjF9fQ==",
+      "plaintextText" : "{\"kind\":\"speechRequest\",\"speechRequest\":{\"kind\":\"subscribe\",\"version\":1}}"
+    },
+    {
+      "counter" : 2,
+      "frame" : "AAAAawIAAAAAAAAABxh5q0VOv+mvZex7m5XogbLJ+PRblMc0Dr9HcHavEhaiADJbFXA+CA1R6aS39CL1FQZk2PNg0z5W8ScDe8cqT0KshiNIP/t3u+V5TcWKocbAIw7sHsGkhha34oM5jSUqoYWg",
+      "name" : "prepare",
+      "plaintext" : "eyJraW5kIjoic3BlZWNoUmVxdWVzdCIsInNwZWVjaFJlcXVlc3QiOnsia2luZCI6InByZXBhcmUiLCJ2ZXJzaW9uIjoxfX0=",
+      "plaintextText" : "{\"kind\":\"speechRequest\",\"speechRequest\":{\"kind\":\"prepare\",\"version\":1}}"
+    },
+    {
+      "counter" : 3,
+      "frame" : "AAAAngMAAAAAAAAAqjbobiWvOM9+GQFD0p3oTXq2KdL8PcjTTgQcxm2NvYIzYmF/Y7olnXXCECn/2n77f6K5i5amGswSi50nvQw3AuIkDNo7qKcUcN3mQJuPSaiezoJNB+r6qKQ5IdDjo36WMksWPv9Y37bQuF05VPkQuswO1S3XwJ+Q93dcj7DQCt/7dH5dZktopSkX8rtbUr+p7CTaTWby",
+      "name" : "begin",
+      "plaintext" : "eyJraW5kIjoic3BlZWNoUmVxdWVzdCIsInNwZWVjaFJlcXVlc3QiOnsia2luZCI6ImJlZ2luIiwidXR0ZXJhbmNlSUQiOiI2Rjk2MTlGRi04Qjg2LUQwMTEtQjQyRC0wMEMwNEZDOTY0RkYiLCJ2ZXJzaW9uIjoxfX0=",
+      "plaintextText" : "{\"kind\":\"speechRequest\",\"speechRequest\":{\"kind\":\"begin\",\"utteranceID\":\"6F9619FF-8B86-D011-B42D-00C04FC964FF\",\"version\":1}}"
+    },
+    {
+      "counter" : 4,
+      "frame" : "AAAAzgQAAAAAAAAAbZ7ra9gjWNYeZdVwlGVrDS0uYfKSJFf9/4P8/T3iImZ9GGjRubToTiGnDCMFGaWpEOjnFsiD+K8wZOHtIDwweS139dMvL+7gUNpXBHI5Jih/ecv5CmEhfCLNWI08RRbM10aTJALz2W2wxItgVGy5jLW1S4E+5Is7FeuRDORlMWJQmV6mRU0rfw/4S7dAncDQ08wnOxYdAg0jHtiW28fH8qcSqtf+7iZr91/CN/qb6qeQMslOgFXg9ZbXiy0mQZektMgMPjJk",
+      "name" : "audio-0",
+      "plaintext" : "eyJraW5kIjoic3BlZWNoUmVxdWVzdCIsInNwZWVjaFJlcXVlc3QiOnsiYXVkaW8iOnsic2FtcGxlcyI6IkFBRC9md0NBTkJJPSIsInNlcXVlbmNlIjowLCJ1dHRlcmFuY2VJRCI6IjZGOTYxOUZGLThCODYtRDAxMS1CNDJELTAwQzA0RkM5NjRGRiJ9LCJraW5kIjoiYXVkaW8iLCJ2ZXJzaW9uIjoxfX0=",
+      "plaintextText" : "{\"kind\":\"speechRequest\",\"speechRequest\":{\"audio\":{\"samples\":\"AAD/fwCANBI=\",\"sequence\":0,\"utteranceID\":\"6F9619FF-8B86-D011-B42D-00C04FC964FF\"},\"kind\":\"audio\",\"version\":1}}"
+    },
+    {
+      "counter" : 5,
+      "frame" : "AAAAxgUAAAAAAAAAU2aWXYkINVpwogKYFzEA9RiWJNHJkCo+H7HuonOhDiuh4y7StfnFJqrKfTwlOlBvrC1CUbgykRC0ABMogyUdTk3MnemsPbwIECZPONkVIVvMzJDMdpjQSfkEiV98pHF0RqKUBC2J7xV6FwRHBAo8QhZjs+7dxLMVCopW9JUzKpmIeNi0yiah01q/vvMO8qNXL25nhgGoSp4p4fMwvtZnfC1k7bNjz1UU6G+srvE8LIPuypGwXrSZvVSgbAN2LQ==",
+      "name" : "audio-1",
+      "plaintext" : "eyJraW5kIjoic3BlZWNoUmVxdWVzdCIsInNwZWVjaFJlcXVlc3QiOnsiYXVkaW8iOnsic2FtcGxlcyI6IkFRQT0iLCJzZXF1ZW5jZSI6MSwidXR0ZXJhbmNlSUQiOiI2Rjk2MTlGRi04Qjg2LUQwMTEtQjQyRC0wMEMwNEZDOTY0RkYifSwia2luZCI6ImF1ZGlvIiwidmVyc2lvbiI6MX19",
+      "plaintextText" : "{\"kind\":\"speechRequest\",\"speechRequest\":{\"audio\":{\"samples\":\"AQA=\",\"sequence\":1,\"utteranceID\":\"6F9619FF-8B86-D011-B42D-00C04FC964FF\"},\"kind\":\"audio\",\"version\":1}}"
+    },
+    {
+      "counter" : 6,
+      "frame" : "AAAAnAYAAAAAAAAAYJzbxaqF2nwiVQd80GEsaV36bYZCrMx11a3K8R49z8iV57jqLgh9II8WxAtX0AnyWcrACcf4me7Y5+Md9oP4xkxZ85wV7hWJxNjrWEUV/N/HSuaGddmh/ahkqvOqYSpmB0Pst0iNWeUMBvIbrCvYb+IYIKncYfUNoWnSP5j8TGGXz9oJEtBjGfbxGL6S5SxSiwdTLA==",
+      "name" : "end",
+      "plaintext" : "eyJraW5kIjoic3BlZWNoUmVxdWVzdCIsInNwZWVjaFJlcXVlc3QiOnsia2luZCI6ImVuZCIsInV0dGVyYW5jZUlEIjoiNkY5NjE5RkYtOEI4Ni1EMDExLUI0MkQtMDBDMDRGQzk2NEZGIiwidmVyc2lvbiI6MX19",
+      "plaintextText" : "{\"kind\":\"speechRequest\",\"speechRequest\":{\"kind\":\"end\",\"utteranceID\":\"6F9619FF-8B86-D011-B42D-00C04FC964FF\",\"version\":1}}"
+    },
+    {
+      "counter" : 7,
+      "frame" : "AAAAnwcAAAAAAAAA7QIO/CPJAv8fJeKyx3VhgP6f2NDA2YTq99Ct2L9MpB9FeMcuWdVe15BNGtpUV+e3tASxTLLoYyadVbeJx2iwdJ3lrbS6NbO37MQqZxw69xw36Su83Qc+m03jq6SZJBG+YxTD1bVxK2x3yQe1JZ/dYruU2E4yY8ipqDta3um/4ifjbtfgfaRvM6CqagCg3gbGP0mhqpgnig==",
+      "name" : "cancel",
+      "plaintext" : "eyJraW5kIjoic3BlZWNoUmVxdWVzdCIsInNwZWVjaFJlcXVlc3QiOnsia2luZCI6ImNhbmNlbCIsInV0dGVyYW5jZUlEIjoiNkY5NjE5RkYtOEI4Ni1EMDExLUI0MkQtMDBDMDRGQzk2NEZGIiwidmVyc2lvbiI6MX19",
+      "plaintextText" : "{\"kind\":\"speechRequest\",\"speechRequest\":{\"kind\":\"cancel\",\"utteranceID\":\"6F9619FF-8B86-D011-B42D-00C04FC964FF\",\"version\":1}}"
+    }
+  ],
+  "speechVersion" : 1
+}

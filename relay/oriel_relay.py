@@ -360,11 +360,20 @@ class RelayServer:
             elif room.pairing_nonce_digest != registration.pairing_nonce_digest:
                 raise RegistrationError("pairing binding mismatch")
 
+            # A device that registers again while its earlier registration still waits takes the slot over: that
+            # connection is usually already dead (a network change leaves it open on this side), and refusing the
+            # new one would leave the other device nothing to meet until it expired. Only the same signing key may
+            # do this; the replay check above already requires a fresh connection nonce.
+            stale: Peer | None = None
             if registration.role == "host":
                 if room is not None and room.host is not None:
-                    raise RegistrationError("host already registered")
+                    if room.host.registration.signing_public_key != registration.signing_public_key:
+                        raise RegistrationError("host already registered")
+                    stale = room.host
             elif room is not None and room.client is not None:
-                raise RegistrationError("client already registered")
+                if room.client.registration.signing_public_key != registration.signing_public_key:
+                    raise RegistrationError("client already registered")
+                stale = room.client
 
             if len(self._replays) >= self.config.max_replays:
                 raise RegistrationError("replay capacity reached")
@@ -377,6 +386,9 @@ class RelayServer:
                 room.host = peer
             else:
                 room.client = peer
+            if stale is not None:
+                _LOG.info("registration replaced a pending one from the same device")
+                asyncio.get_running_loop().create_task(stale.transport.close())
 
             if room.host is not None and room.client is not None:
                 self._pending.pop(room_key, None)

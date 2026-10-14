@@ -37,11 +37,36 @@ public struct SessionApproval: Codable, Equatable, Sendable {
     public let expiresAt: Date
     /// The Mac's standing relay rendezvous, so this phone can reconnect from anywhere.
     public let reconnectRoute: ReconnectRoute?
+    /// Voice input the Mac offers this session (SpeechProtocol.swift). Older phones skip the key; older Macs and the
+    /// Windows companion never send it, so a phone without it shows no mic.
+    public let speech: SpeechTranscriptionOffer?
 
-    public init(capabilities: Set<SessionCapability>, expiresAt: Date, reconnectRoute: ReconnectRoute? = nil) {
+    public init(
+        capabilities: Set<SessionCapability>,
+        expiresAt: Date,
+        reconnectRoute: ReconnectRoute? = nil,
+        speech: SpeechTranscriptionOffer? = nil
+    ) {
         self.capabilities = capabilities
         self.expiresAt = expiresAt
         self.reconnectRoute = reconnectRoute
+        self.speech = speech
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case capabilities
+        case expiresAt
+        case reconnectRoute
+        case speech
+    }
+
+    public init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        capabilities = try container.decode(Set<SessionCapability>.self, forKey: .capabilities)
+        expiresAt = try container.decode(Date.self, forKey: .expiresAt)
+        reconnectRoute = try container.decodeIfPresent(ReconnectRoute.self, forKey: .reconnectRoute)
+        // An offer this phone cannot read leaves voice input off; it does not end the session.
+        speech = try? container.decodeIfPresent(SpeechTranscriptionOffer.self, forKey: .speech)
     }
 }
 
@@ -60,6 +85,10 @@ public enum SessionPacket: Equatable, Sendable {
     /// The assistant: Mac to phone.
     case agentTrace(AgentTraceEvent)
     case agentStatus(AgentProviderSummary)
+    /// Voice input (SpeechProtocol.swift): phone to Mac, only after the Mac offered it in its approval.
+    case speechRequest(SpeechRequest)
+    /// Voice input: Mac to phone, only after the phone sent a speech request.
+    case speechEvent(SpeechEvent)
 }
 
 extension SessionPacket: Codable {
@@ -73,6 +102,8 @@ extension SessionPacket: Codable {
         case agentControl
         case agentTrace
         case agentStatus
+        case speechRequest
+        case speechEvent
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -86,6 +117,8 @@ extension SessionPacket: Codable {
         case agentControl
         case agentTrace
         case agentStatus
+        case speechRequest
+        case speechEvent
     }
 
     public init(from decoder: any Decoder) throws {
@@ -133,6 +166,14 @@ extension SessionPacket: Codable {
             self = .agentStatus(
                 try container.decode(AgentProviderSummary.self, forKey: .agentStatus)
             )
+        case .speechRequest:
+            self = .speechRequest(
+                try container.decode(SpeechRequest.self, forKey: .speechRequest)
+            )
+        case .speechEvent:
+            self = .speechEvent(
+                try container.decode(SpeechEvent.self, forKey: .speechEvent)
+            )
         }
     }
 
@@ -169,6 +210,12 @@ extension SessionPacket: Codable {
         case let .agentStatus(summary):
             try container.encode(Kind.agentStatus, forKey: .kind)
             try container.encode(summary, forKey: .agentStatus)
+        case let .speechRequest(request):
+            try container.encode(Kind.speechRequest, forKey: .kind)
+            try container.encode(request, forKey: .speechRequest)
+        case let .speechEvent(event):
+            try container.encode(Kind.speechEvent, forKey: .kind)
+            try container.encode(event, forKey: .speechEvent)
         }
     }
 }
